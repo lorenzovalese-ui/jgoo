@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desvie dos Tiros</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="topo">
+      <div>
+        <p class="subtitulo">ARCADE SURVIVAL</p>
+        <h1>DESVIE DOS <span>TIROS</span></h1>
+      </div>
+      <div class="moedas">🪙 <span id="moedas">0</span></div>
+    </header>
+
+    <section id="menu" class="painel">
+      <h2>Prepare-se para sobreviver</h2>
+      <p>Desvie dos projéteis, colete moedas e bata seus recordes!</p>
+
+      <label for="jogadores">Modo de jogo</label>
+      <select id="jogadores">
+        <option value="1">1 jogador</option>
+        <option value="2">2 jogadores</option>
+      </select>
+
+      <label for="dificuldade">Dificuldade</label>
+      <select id="dificuldade">
+        <option value="facil">Fácil</option>
+        <option value="normal" selected>Normal</option>
+        <option value="dificil">Difícil</option>
+      </select>
+
+      <button id="btnJogar" class="botao principal">▶ JOGAR</button>
+      <button id="btnLoja" class="botao">🛒 LOJA DE SKINS</button>
+
+      <div class="recordes">
+        <h3>🏆 Melhores sobreviventes</h3>
+        <ol id="rankingMenu"></ol>
+      </div>
+
+      <div class="controles">
+        <p><b>Jogador 1:</b> W A S D</p>
+        <p><b>Jogador 2:</b> setas do teclado</p>
+        <p><b>Pausa:</b> P</p>
+      </div>
+    </section>
+
+    <section id="jogo" class="painel escondido">
+      <div class="hud">
+        <div>⏱️ <span id="tempo">0.0</span>s</div>
+        <div>⭐ Pontos: <span id="pontos">0</span></div>
+        <div>🪙 <span id="moedasPartida">0</span></div>
+        <div>🌊 Nível: <span id="nivel">1</span></div>
+      </div>
+
+      <div class="barras">
+        <span id="status1">🟢 Jogador 1</span>
+        <span id="status2" class="escondido">🔵 Jogador 2</span>
+      </div>
+
+      <canvas id="arena" width="900" height="540"></canvas>
+
+      <div class="acoes">
+        <button id="btnPausa" class="botao">⏸ Pausar (P)</button>
+        <button id="btnMenu" class="botao">⌂ Menu</button>
+        <button id="btnSom" class="botao">🔊 Som ligado</button>
+      </div>
+
+      <div id="mensagem" class="mensagem escondido"></div>
+
+      <div class="dicas">
+        Colete os itens brilhantes. O escudo bloqueia tiros, a velocidade ajuda a escapar e a estrela concede invencibilidade temporária.
+      </div>
+    </section>
+
+    <section id="loja" class="painel escondido">
+      <h2>🛒 Loja de skins</h2>
+      <p>Use as moedas das partidas para desbloquear cores.</p>
+      <div id="itensLoja" class="itens-loja"></div>
+      <button id="btnVoltar" class="botao principal">Voltar ao menu</button>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
