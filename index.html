@@ -3,8 +3,9 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Desvie dos Tiros</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#080b16">
+  <title>Desvie dos Tiros | Arcade Survival</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -62,24 +63,56 @@
         <span id="status2" class="escondido">🔵 Jogador 2</span>
       </div>
 
-      <canvas id="arena" width="900" height="540"></canvas>
+      <canvas id="arena" width="900" height="540">
+        O teu navegador não suporta Canvas.
+      </canvas>
+
+      <div id="controlesMobile" class="controles-mobile">
+        <div class="controle-jogador" id="controleP1">
+          <p>🟢 Jogador 1</p>
+          <div class="direcional">
+            <button class="vazio" disabled aria-hidden="true"> </button>
+            <button class="controle" data-key="w" aria-label="Mover para cima">▲</button>
+            <button class="vazio" disabled aria-hidden="true"> </button>
+            <button class="controle" data-key="a" aria-label="Mover para a esquerda">◀</button>
+            <button class="controle" data-key="s" aria-label="Mover para baixo">▼</button>
+            <button class="controle" data-key="d" aria-label="Mover para a direita">▶</button>
+          </div>
+        </div>
+
+        <div class="controle-jogador escondido" id="controleP2">
+          <p>🔵 Jogador 2</p>
+          <div class="direcional">
+            <button class="vazio" disabled aria-hidden="true"> </button>
+            <button class="controle" data-key="ArrowUp" aria-label="Mover para cima">▲</button>
+            <button class="vazio" disabled aria-hidden="true"> </button>
+            <button class="controle" data-key="ArrowLeft" aria-label="Mover para a esquerda">◀</button>
+            <button class="controle" data-key="ArrowDown" aria-label="Mover para baixo">▼</button>
+            <button class="controle" data-key="ArrowRight" aria-label="Mover para a direita">▶</button>
+          </div>
+        </div>
+      </div>
 
       <div class="acoes">
-        <button id="btnPausa" class="botao">⏸ Pausar (P)</button>
+        <button id="btnPausa" class="botao">⏸ Pausar</button>
         <button id="btnMenu" class="botao">⌂ Menu</button>
         <button id="btnSom" class="botao">🔊 Som ligado</button>
+        <button id="btnTelaCheia" class="botao">⛶ Tela cheia</button>
       </div>
 
       <div id="mensagem" class="mensagem escondido"></div>
 
       <div class="dicas">
-        Colete os itens brilhantes. O escudo bloqueia tiros, a velocidade ajuda a escapar e a estrela concede invencibilidade temporária.
+        🛡️ Escudo: bloqueia um tiro. ⚡ Velocidade: corres mais rápido.
+        ⭐ Estrela: invencibilidade temporária. 🪙 Moeda: ganhas moedas.
+        O chefão aparece a cada 60 segundos!
       </div>
     </section>
 
     <section id="loja" class="painel escondido">
       <h2>🛒 Loja de skins</h2>
-      <p>Use as moedas das partidas para desbloquear cores.</p>
+      <p>Desbloqueia cores com as moedas que recolheres nas partidas.</p>
+      <p>Saldo: 🪙 <b id="saldoLoja">0</b></p>
       <div id="itensLoja" class="itens-loja"></div>
       <button id="btnVoltar" class="botao principal">Voltar ao menu</button>
     </section>

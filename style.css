@@ -13,6 +13,11 @@
   --roxo: #a783ff;
 }
 
+html {
+  min-height: 100%;
+  background: var(--fundo);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -22,6 +27,15 @@ body {
     radial-gradient(ellipse at top, #17274a 0%, transparent 55%),
     var(--fundo);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .container {
@@ -100,6 +114,7 @@ select {
 }
 
 .botao {
+  min-height: 42px;
   border: 1px solid #3c4c6d;
   background: #202d47;
   color: white;
@@ -112,8 +127,11 @@ select {
 }
 
 .botao:hover {
-  filter: brightness(1.25);
-  transform: translateY(-1px);
+  filter: brightness(1.2);
+}
+
+.botao:active {
+  transform: scale(0.97);
 }
 
 .principal {
@@ -191,6 +209,7 @@ canvas {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 5 / 3;
   background: #080d19;
   border: 1px solid #334563;
   border-radius: 10px;
@@ -212,6 +231,10 @@ canvas {
   border: 1px solid #40577b;
   background: #0a1224;
   border-radius: 10px;
+}
+
+.mensagem h2 {
+  color: var(--verde);
 }
 
 .dicas {
@@ -246,6 +269,7 @@ canvas {
 
 .skin button {
   width: 100%;
+  min-height: 40px;
   margin-top: 10px;
   padding: 9px;
   border: 0;
@@ -265,28 +289,149 @@ canvas {
   display: none !important;
 }
 
-@media (max-width: 550px) {
+/* Controles direcionais para celular */
+.controles-mobile {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.controle-jogador {
+  min-width: 0;
+  padding: 10px;
+  text-align: center;
+  background: #0b1222;
+  border: 1px solid #273652;
+  border-radius: 12px;
+}
+
+.controle-jogador p {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.direcional {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.controle,
+.vazio {
+  min-width: 0;
+  height: 46px;
+  border-radius: 9px;
+}
+
+.controle {
+  color: white;
+  background: #263957;
+  border: 1px solid #4c6387;
+  font-size: 20px;
+  font-weight: bold;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.controle.pressionado {
+  color: #07140e;
+  background: var(--verde);
+  transform: scale(0.94);
+}
+
+.vazio {
+  visibility: hidden;
+}
+
+@media (max-width: 700px) {
   body {
-    padding: 12px 8px;
+    padding: 10px 7px;
+    overflow-x: hidden;
+  }
+
+  .container {
+    width: 100%;
   }
 
   .painel {
-    padding: 15px;
+    padding: 12px;
+    border-radius: 12px;
   }
 
   .topo {
-    align-items: flex-start;
+    gap: 8px;
+  }
+
+  h1 {
+    font-size: clamp(21px, 6vw, 30px);
+    letter-spacing: 1px;
+  }
+
+  .subtitulo {
+    letter-spacing: 2px;
+    font-size: 9px;
   }
 
   .moedas {
-    padding: 9px;
-  }
-
-  .hud {
+    padding: 8px 10px;
     font-size: 13px;
   }
 
+  .controles-mobile {
+    display: grid;
+  }
+
+  .controle-jogador {
+    padding: 6px;
+  }
+
+  .controle-jogador p {
+    font-size: 11px;
+    margin: 5px 0 8px;
+  }
+
+  .controle,
+  .vazio {
+    height: clamp(36px, 10vw, 48px);
+  }
+
+  .acoes {
+    gap: 6px;
+  }
+
   .acoes .botao {
-    flex: 1;
+    flex: 1 1 40%;
+    padding: 10px 6px;
+    font-size: 12px;
+  }
+
+  .hud {
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .controles {
+    gap: 5px 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .controles-mobile {
+    gap: 5px;
+  }
+
+  .controle-jogador {
+    padding: 4px;
+  }
+
+  .controle,
+  .vazio {
+    height: 34px;
   }
 }

@@ -1,8 +1,7 @@
 
-const canvas = document.getElementById("arena");
-const ctx = canvas.getContext("2d");
-
 const $ = id => document.getElementById(id);
+const canvas = $("arena");
+const ctx = canvas.getContext("2d");
 
 const cores = [
   { nome: "Verde", cor: "#42ff9e", preco: 0 },
@@ -13,21 +12,47 @@ const cores = [
   { nome: "Vermelho", cor: "#ff5964", preco: 100 }
 ];
 
-let dados = carregarDados();
+function carregarDados() {
+  try {
+    const dados = JSON.parse(localStorage.getItem("desvieDados"));
+
+    return {
+      moedas: Math.max(0, Number(dados?.moedas) || 0),
+      desbloqueadas: Array.isArray(dados?.desbloqueadas)
+        ? [...new Set([0, 1, ...dados.desbloqueadas.filter(
+            n => Number.isInteger(n) && n >= 0 && n < cores.length
+          )])]
+        : [0, 1],
+      skin1: Number.isInteger(dados?.skin1) ? dados.skin1 : 0,
+      ranking: Array.isArray(dados?.ranking) ? dados.ranking : []
+    };
+  } catch {
+    return {
+      moedas: 0,
+      desbloqueadas: [0, 1],
+      skin1: 0,
+      ranking: []
+    };
+  }
+}
+
+const dados = carregarDados();
+
 let jogadores = [];
 let tiros = [];
 let poderes = [];
 let particulas = [];
 let boss = null;
 let teclas = {};
+
 let modo = 1;
 let dificuldade = "normal";
 let rodando = false;
 let pausado = false;
 let encerrado = false;
 let somLigado = true;
-let inicio = 0;
-let tempoPausa = 0;
+let telaCheia = false;
+
 let tempoDecorrido = 0;
 let ultimoFrame = 0;
 let ultimoTiro = 0;
@@ -35,37 +60,23 @@ let ultimoPoder = 0;
 let ultimoBoss = 0;
 let moedasPartida = 0;
 let pontos = 0;
-let proximoTiro = 0;
 let animacao = null;
 let audio = null;
 
-function carregarDados() {
-  try {
-    return JSON.parse(localStorage.getItem("desvieDados")) || {
-      moedas: 0,
-      desbloqueadas: [0, 1],
-      skin1: 0,
-      skin2: 1,
-      ranking: []
-    };
-  } catch {
-    return {
-      moedas: 0,
-      desbloqueadas: [0, 1],
-      skin1: 0,
-      skin2: 1,
-      ranking: []
-    };
-  }
-}
-
 function salvarDados() {
-  localStorage.setItem("desvieDados", JSON.stringify(dados));
+  try {
+    localStorage.setItem("desvieDados", JSON.stringify(dados));
+  } catch {
+    // O jogo continua funcionando mesmo se o navegador
+    // não permitir guardar dados.
+  }
+
   atualizarMoedas();
 }
 
 function atualizarMoedas() {
   $("moedas").textContent = dados.moedas;
+  $("saldoLoja").textContent = dados.moedas;
 }
 
 function som(frequencia = 440, duracao = 0.07, tipo = "sine") {
@@ -73,14 +84,18 @@ function som(frequencia = 440, duracao = 0.07, tipo = "sine") {
 
   try {
     audio ||= new AudioContext();
-    if (audio.state === "suspended") audio.resume();
+
+    if (audio.state === "suspended") {
+      audio.resume();
+    }
 
     const oscilador = audio.createOscillator();
     const volume = audio.createGain();
 
     oscilador.type = tipo;
     oscilador.frequency.value = frequencia;
-    volume.gain.setValueAtTime(0.05, audio.currentTime);
+
+    volume.gain.setValueAtTime(0.045, audio.currentTime);
     volume.gain.exponentialRampToValueAtTime(
       0.001,
       audio.currentTime + duracao
@@ -88,9 +103,12 @@ function som(frequencia = 440, duracao = 0.07, tipo = "sine") {
 
     oscilador.connect(volume);
     volume.connect(audio.destination);
+
     oscilador.start();
     oscilador.stop(audio.currentTime + duracao);
-  } catch {}
+  } catch {
+    // O som é opcional.
+  }
 }
 
 function mostrar(tela) {
@@ -101,7 +119,7 @@ function mostrar(tela) {
 
 function desenharRanking(id) {
   const lista = $(id);
-  lista.innerHTML = "";
+  lista.replaceChildren();
 
   if (!dados.ranking.length) {
     const item = document.createElement("li");
@@ -113,8 +131,31 @@ function desenharRanking(id) {
   dados.ranking.slice(0, 5).forEach(registro => {
     const item = document.createElement("li");
     item.textContent =
-      `${registro.nome} — ${registro.tempo.toFixed(1)}s`;
+      `${registro.nome} — ${Number(registro.tempo).toFixed(1)}s`;
     lista.appendChild(item);
+  });
+}
+
+function criarJogador(id, x, y, cor) {
+  return {
+    id,
+    x,
+    y,
+    raio: 13,
+    cor,
+    vivo: true,
+    escudo: 0,
+    velocidadeExtra: 0,
+    invencivel: 0,
+    sobreviveu: 0
+  };
+}
+
+function limparTeclas() {
+  teclas = {};
+
+  document.querySelectorAll(".controle[data-key]").forEach(botao => {
+    botao.classList.remove("pressionado");
   });
 }
 
@@ -122,23 +163,15 @@ function iniciarJogo() {
   modo = Number($("jogadores").value);
   dificuldade = $("dificuldade").value;
 
+  const cor1 = cores[dados.skin1]?.cor || cores[0].cor;
+
   jogadores = [
-    criarJogador(
-      1,
-      canvas.width * 0.35,
-      canvas.height / 2,
-      dados.skin1
-    )
+    criarJogador(1, canvas.width * 0.35, canvas.height / 2, cor1)
   ];
 
   if (modo === 2) {
     jogadores.push(
-      criarJogador(
-        2,
-        canvas.width * 0.65,
-        canvas.height / 2,
-        dados.skin2
-      )
+      criarJogador(2, canvas.width * 0.65, canvas.height / 2, cores[1].cor)
     );
   }
 
@@ -146,6 +179,8 @@ function iniciarJogo() {
   poderes = [];
   particulas = [];
   boss = null;
+  teclas = {};
+
   pontos = 0;
   moedasPartida = 0;
   tempoDecorrido = 0;
@@ -153,48 +188,36 @@ function iniciarJogo() {
   ultimoPoder = 0;
   ultimoBoss = 0;
   ultimoFrame = 0;
-  teclas = {};
+
   encerrado = false;
   pausado = false;
   rodando = true;
 
   $("mensagem").classList.add("escondido");
   $("status2").classList.toggle("escondido", modo !== 2);
-  $("btnPausa").textContent = "⏸ Pausar (P)";
+  $("controleP2").classList.toggle("escondido", modo !== 2);
+  $("controleP1").classList.remove("escondido");
+
+  $("btnPausa").textContent = "⏸ Pausar";
   $("moedasPartida").textContent = "0";
   $("pontos").textContent = "0";
+  $("tempo").textContent = "0.0";
+  $("nivel").textContent = "1";
 
   mostrar("jogo");
+  som(520, 0.1);
 
-  inicio = performance.now();
+  cancelAnimationFrame(animacao);
   animacao = requestAnimationFrame(loop);
-}
-
-function criarJogador(id, x, y, skin) {
-  return {
-    id,
-    x,
-    y,
-    raio: 13,
-    cor: cores[skin]?.cor || cores[id - 1].cor,
-    skin,
-    vivo: true,
-    escudo: 0,
-    velocidadeExtra: 0,
-    invencivel: 0,
-    moedas: 0,
-    sobreviveu: 0
-  };
-}
-
-function limparTeclas() {
-  teclas = {};
 }
 
 function loop(agora) {
   if (!rodando || encerrado) return;
 
+  // Ao pausar, o tempo e os objetos ficam parados.
   if (pausado) {
+    ultimoFrame = agora;
+    desenhar();
     animacao = requestAnimationFrame(loop);
     return;
   }
@@ -204,17 +227,20 @@ function loop(agora) {
     : 0;
 
   ultimoFrame = agora;
-  tempoDecorrido = (agora - inicio - tempoPausa) / 1000;
+  tempoDecorrido += dt;
 
   atualizar(dt, agora);
   desenhar();
   atualizarHUD();
 
-  animacao = requestAnimationFrame(loop);
+  if (rodando && !encerrado) {
+    animacao = requestAnimationFrame(loop);
+  }
 }
 
 function atualizar(dt, agora) {
   const nivel = Math.floor(tempoDecorrido / 15) + 1;
+
   const multiplicador = dificuldade === "facil" ? 0.75 :
     dificuldade === "dificil" ? 1.45 : 1;
 
@@ -233,7 +259,10 @@ function atualizar(dt, agora) {
     ultimoPoder = agora;
   }
 
-  if (tempoDecorrido >= 60 && tempoDecorrido - ultimoBoss >= 60) {
+  if (
+    tempoDecorrido >= 60 &&
+    tempoDecorrido - ultimoBoss >= 60
+  ) {
     criarBoss();
     ultimoBoss = tempoDecorrido;
   }
@@ -246,23 +275,25 @@ function atualizar(dt, agora) {
     j.velocidadeExtra = Math.max(0, j.velocidadeExtra - dt);
     j.invencivel = Math.max(0, j.invencivel - dt);
 
-    const velocidade = (230 + (j.velocidadeExtra > 0 ? 125 : 0)) * dt;
+    const velocidade =
+      (230 + (j.velocidadeExtra > 0 ? 125 : 0)) * dt;
+
     let dx = 0;
     let dy = 0;
 
     if (j.id === 1) {
-      if (teclas["w"]) dy--;
-      if (teclas["s"]) dy++;
-      if (teclas["a"]) dx--;
-      if (teclas["d"]) dx++;
+      if (teclas.w) dy--;
+      if (teclas.s) dy++;
+      if (teclas.a) dx--;
+      if (teclas.d) dx++;
     } else {
-      if (teclas["ArrowUp"]) dy--;
-      if (teclas["ArrowDown"]) dy++;
-      if (teclas["ArrowLeft"]) dx--;
-      if (teclas["ArrowRight"]) dx++;
+      if (teclas.ArrowUp) dy--;
+      if (teclas.ArrowDown) dy++;
+      if (teclas.ArrowLeft) dx--;
+      if (teclas.ArrowRight) dx++;
     }
 
-    if (dx && dy) {
+    if (dx !== 0 && dy !== 0) {
       dx *= Math.SQRT1_2;
       dy *= Math.SQRT1_2;
     }
@@ -280,8 +311,10 @@ function atualizar(dt, agora) {
   });
 
   tiros = tiros.filter(t =>
-    t.x > -40 && t.x < canvas.width + 40 &&
-    t.y > -40 && t.y < canvas.height + 40
+    t.x > -40 &&
+    t.x < canvas.width + 40 &&
+    t.y > -40 &&
+    t.y < canvas.height + 40
   );
 
   poderes.forEach(p => {
@@ -293,13 +326,13 @@ function atualizar(dt, agora) {
   if (boss) {
     boss.x += boss.dx * dt;
 
-    if (boss.x < 80 || boss.x > canvas.width - 80) {
+    if (boss.x < 70 || boss.x > canvas.width - 70) {
       boss.dx *= -1;
     }
 
     boss.tempo += dt;
 
-    if (boss.tempo > 0.8) {
+    if (boss.tempo >= 0.8) {
       criarTiroBoss();
       boss.tempo = 0;
     }
@@ -338,23 +371,25 @@ function criarTiro() {
     y = Math.random() * canvas.height;
   }
 
-  const alvo = jogadores.filter(j => j.vivo);
-  if (!alvo.length) return;
+  const alvos = jogadores.filter(j => j.vivo);
+  if (!alvos.length) return;
 
-  const j = alvo[Math.floor(Math.random() * alvo.length)];
-  const angulo = Math.atan2(j.y - y, j.x - x);
+  const alvo = alvos[Math.floor(Math.random() * alvos.length)];
+  const angulo = Math.atan2(alvo.y - y, alvo.x - x);
+
   const nivel = Math.floor(tempoDecorrido / 15) + 1;
   const base = dificuldade === "facil" ? 115 :
     dificuldade === "dificil" ? 205 : 155;
+
   const velocidade = base + nivel * 13;
 
   tiros.push({
-    x, y,
+    x,
+    y,
     dx: Math.cos(angulo) * velocidade,
     dy: Math.sin(angulo) * velocidade,
     raio: 6,
-    cor: "#ff5964",
-    danoBoss: false
+    cor: "#ff5964"
   });
 }
 
@@ -365,18 +400,18 @@ function criarTiroBoss() {
   if (!alvos.length) return;
 
   const alvo = alvos[Math.floor(Math.random() * alvos.length)];
-  const anguloBase = Math.atan2(alvo.y - boss.y, alvo.x - boss.x);
+  const base = Math.atan2(alvo.y - boss.y, alvo.x - boss.x);
 
   for (let i = -2; i <= 2; i++) {
-    const angulo = anguloBase + i * 0.18;
+    const angulo = base + i * 0.18;
+
     tiros.push({
       x: boss.x,
       y: boss.y + 25,
       dx: Math.cos(angulo) * 190,
       dy: Math.sin(angulo) * 190,
       raio: 7,
-      cor: "#ff9d42",
-      danoBoss: false
+      cor: "#ff9d42"
     });
   }
 }
@@ -393,13 +428,19 @@ function criarBoss() {
   };
 
   som(120, 0.5, "sawtooth");
-  $("mensagem").classList.remove("escondido");
-  $("mensagem").textContent = "⚠️ CHEFÃO APARECEU! Encoste nele para causar dano, mas cuidado com os tiros!";
-  setTimeout(() => {
-    if (rodando && !encerrado) {
-      $("mensagem").classList.add("escondido");
-    }
-  }, 3500);
+  mostrarMensagem("⚠️ CHEFÃO! Usa a estrela de invencibilidade para causar dano ao encostar nele.");
+}
+
+function mostrarMensagem(texto, duracao = 3500) {
+  const mensagem = $("mensagem");
+  mensagem.textContent = texto;
+  mensagem.classList.remove("escondido");
+
+  if (mensagem._timer) clearTimeout(mensagem._timer);
+
+  mensagem._timer = setTimeout(() => {
+    if (!encerrado) mensagem.classList.add("escondido");
+  }, duracao);
 }
 
 function criarPoder() {
@@ -413,10 +454,10 @@ function criarPoder() {
     tempo: 0,
     raio: 12,
     simbolo: {
-      escudo: "🛡️",
+      escudo: "🛡",
       velocidade: "⚡",
-      estrela: "⭐",
-      moeda: "🪙"
+      estrela: "★",
+      moeda: "●"
     }[tipo]
   });
 }
@@ -430,33 +471,33 @@ function verificarColisoes() {
     if (!j.vivo) return;
 
     poderes.forEach(p => {
-      if (distancia(j, p) < j.raio + p.raio + 3) {
+      if (!p.coletado && distancia(j, p) < j.raio + p.raio + 3) {
         p.coletado = true;
         coletarPoder(j, p);
       }
     });
 
     tiros.forEach(t => {
-      if (distancia(j, t) < j.raio + t.raio) {
-        if (j.invencivel > 0) {
-          criarParticulas(t.x, t.y, "#ffd45b", 4);
-          t.x = -100;
-        } else if (j.escudo > 0) {
-          j.escudo = 0;
-          criarParticulas(j.x, j.y, "#43b9ff", 12);
-          t.x = -100;
-          som(250, 0.15);
-        } else {
-          j.vivo = false;
-          criarParticulas(j.x, j.y, j.cor, 25);
-          som(100, 0.25, "sawtooth");
-        }
+      if (distancia(j, t) >= j.raio + t.raio) return;
+
+      if (j.invencivel > 0) {
+        criarParticulas(t.x, t.y, "#ffd45b", 4);
+        t.x = -1000;
+      } else if (j.escudo > 0) {
+        j.escudo = 0;
+        criarParticulas(j.x, j.y, "#43b9ff", 12);
+        t.x = -1000;
+        som(250, 0.15);
+      } else {
+        j.vivo = false;
+        criarParticulas(j.x, j.y, j.cor, 25);
+        som(100, 0.25, "sawtooth");
       }
     });
 
     if (boss && distancia(j, boss) < j.raio + boss.raio) {
       if (j.invencivel > 0) {
-        boss.vida -= 0.15;
+        boss.vida -= 0.2;
       } else if (j.escudo > 0) {
         j.escudo = 0;
         boss.vida -= 1;
@@ -467,7 +508,7 @@ function verificarColisoes() {
     }
   });
 
-  if (jogadores.every(j => !j.vivo)) {
+  if (jogadores.length && jogadores.every(j => !j.vivo)) {
     gameOver();
   }
 }
@@ -477,15 +518,18 @@ function coletarPoder(j, p) {
 
   if (p.tipo === "escudo") {
     j.escudo = 7;
+    mostrarMensagem("🛡 Escudo ativado por 7 segundos!", 1600);
   } else if (p.tipo === "velocidade") {
     j.velocidadeExtra = 7;
+    mostrarMensagem("⚡ Velocidade aumentada por 7 segundos!", 1600);
   } else if (p.tipo === "estrela") {
     j.invencivel = 4;
+    mostrarMensagem("⭐ Invencibilidade por 4 segundos!", 1600);
   } else if (p.tipo === "moeda") {
     moedasPartida += 5;
     dados.moedas += 5;
-    j.moedas += 5;
     salvarDados();
+    mostrarMensagem("🪙 Ganhaste 5 moedas!", 1600);
   }
 
   criarParticulas(p.x, p.y, "#ffd45b", 12);
@@ -497,7 +541,8 @@ function criarParticulas(x, y, cor, quantidade) {
     const velocidade = 40 + Math.random() * 180;
 
     particulas.push({
-      x, y,
+      x,
+      y,
       dx: Math.cos(angulo) * velocidade,
       dy: Math.sin(angulo) * velocidade,
       vida: 0.5 + Math.random() * 0.5,
@@ -518,7 +563,6 @@ function atualizarParticulas(dt) {
 
 function desenhar() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
   ctx.fillStyle = "#080d19";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -544,15 +588,22 @@ function desenhar() {
     ctx.shadowColor = "#ffd45b";
     ctx.shadowBlur = 18;
     ctx.fillStyle = "#ffd45b";
+
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.raio + Math.sin(p.tempo * 6) * 2, 0, Math.PI * 2);
+    ctx.arc(
+      p.x,
+      p.y,
+      p.raio + Math.sin(p.tempo * 6) * 2,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
     ctx.restore();
 
-    ctx.font = "15px Arial";
+    ctx.fillStyle = "#080d19";
+    ctx.font = "bold 15px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "#080d19";
     ctx.fillText(p.simbolo, p.x, p.y);
   });
 
@@ -578,7 +629,7 @@ function desenhar() {
     ctx.restore();
 
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 20px Arial";
+    ctx.font = "bold 17px Arial";
     ctx.textAlign = "center";
     ctx.fillText("BOSS", boss.x, boss.y + 6);
 
@@ -597,20 +648,13 @@ function desenhar() {
     if (!j.vivo) return;
 
     ctx.save();
-
-    if (j.invencivel > 0) {
-      ctx.shadowColor = "#ffd45b";
-      ctx.shadowBlur = 28;
-    } else {
-      ctx.shadowColor = j.cor;
-      ctx.shadowBlur = 18;
-    }
-
+    ctx.shadowColor = j.invencivel > 0 ? "#ffd45b" : j.cor;
+    ctx.shadowBlur = j.invencivel > 0 ? 28 : 18;
     ctx.fillStyle = j.invencivel > 0 ? "#ffd45b" : j.cor;
+
     ctx.beginPath();
     ctx.arc(j.x, j.y, j.raio, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.restore();
 
     if (j.escudo > 0) {
@@ -643,7 +687,11 @@ function desenhar() {
     ctx.textAlign = "center";
     ctx.fillText("PAUSADO", canvas.width / 2, canvas.height / 2);
     ctx.font = "16px Arial";
-    ctx.fillText("Pressione P para continuar", canvas.width / 2, canvas.height / 2 + 35);
+    ctx.fillText(
+      "Pressiona continuar para jogar",
+      canvas.width / 2,
+      canvas.height / 2 + 35
+    );
   }
 }
 
@@ -657,33 +705,29 @@ function atualizarHUD() {
     const status = $("status" + j.id);
     if (!status) return;
 
-    const poderesAtivos = [];
-    if (j.escudo > 0) poderesAtivos.push("🛡️ " + j.escudo.toFixed(0) + "s");
-    if (j.velocidadeExtra > 0) poderesAtivos.push("⚡ " + j.velocidadeExtra.toFixed(0) + "s");
-    if (j.invencivel > 0) poderesAtivos.push("⭐ " + j.invencivel.toFixed(0) + "s");
+    const ativos = [];
+    if (j.escudo > 0) ativos.push("🛡 " + j.escudo.toFixed(0) + "s");
+    if (j.velocidadeExtra > 0) ativos.push("⚡ " + j.velocidadeExtra.toFixed(0) + "s");
+    if (j.invencivel > 0) ativos.push("⭐ " + j.invencivel.toFixed(0) + "s");
 
     status.textContent =
       (j.vivo ? "🟢" : "❌") + " Jogador " + j.id +
-      (poderesAtivos.length ? " | " + poderesAtivos.join(" ") : "");
+      (ativos.length ? " | " + ativos.join(" ") : "");
   });
 }
 
 function gameOver() {
   rodando = false;
   encerrado = true;
+  pausado = false;
   cancelAnimationFrame(animacao);
+  limparTeclas();
 
-  const sobreviventes = jogadores
-    .filter(j => j.sobreviveu > 0)
-    .sort((a, b) => b.sobreviveu - a.sobreviveu);
+  let nome = "Jogador 1";
 
-  let nome = "Jogador";
   if (modo === 2) {
-    nome = sobreviventes.length
-      ? "Jogador " + sobreviventes[0].id
-      : "Empate";
-  } else {
-    nome = "Jogador 1";
+    const sobrevivente = jogadores.find(j => j.vivo);
+    nome = sobrevivente ? "Jogador " + sobrevivente.id : "Empate";
   }
 
   dados.ranking.push({
@@ -698,29 +742,45 @@ function gameOver() {
   salvarDados();
   desenharRanking("rankingMenu");
 
-  $("mensagem").classList.remove("escondido");
-  $("mensagem").innerHTML =
-    `<h2>💥 Fim de jogo!</h2>
-     <p>Tempo sobrevivido: <b>${tempoDecorrido.toFixed(1)} segundos</b></p>
-     <p>Pontuação: <b>${pontos}</b></p>
-     <p>Moedas ganhas nesta partida: <b>${moedasPartida}</b></p>
-     <p>${modo === 2 ? "Resultado: " + nome : "Continue tentando bater seu recorde!"}</p>
-     <button class="botao principal" onclick="iniciarJogo()">Jogar novamente</button>`;
+  const mensagem = $("mensagem");
+  mensagem.replaceChildren();
 
-  $("btnPausa").textContent = "⏸ Pausar (P)";
+  const titulo = document.createElement("h2");
+  titulo.textContent = "💥 Fim de jogo!";
+  mensagem.appendChild(titulo);
+
+  const detalhes = document.createElement("p");
+  detalhes.textContent =
+    `Sobrevivência: ${tempoDecorrido.toFixed(1)}s | ` +
+    `Pontos: ${pontos} | Moedas ganhas: ${moedasPartida}`;
+  mensagem.appendChild(detalhes);
+
+  const resultado = document.createElement("p");
+  resultado.textContent = modo === 2
+    ? `Resultado: ${nome}`
+    : "Tenta bater o teu recorde!";
+  mensagem.appendChild(resultado);
+
+  const botao = document.createElement("button");
+  botao.className = "botao principal";
+  botao.textContent = "Jogar novamente";
+  botao.addEventListener("click", iniciarJogo);
+  mensagem.appendChild(botao);
+
+  mensagem.classList.remove("escondido");
+  $("btnPausa").textContent = "⏸ Pausar";
 }
 
 function alternarPausa() {
   if (!rodando || encerrado) return;
 
   pausado = !pausado;
+  limparTeclas();
+
+  $("btnPausa").textContent = pausado ? "▶ Continuar" : "⏸ Pausar";
 
   if (!pausado) {
-    inicio = performance.now() - tempoDecorrido * 1000 - tempoPausa;
     ultimoFrame = 0;
-    $("btnPausa").textContent = "⏸ Pausar (P)";
-  } else {
-    $("btnPausa").textContent = "▶ Continuar (P)";
   }
 }
 
@@ -728,6 +788,7 @@ function voltarMenu() {
   rodando = false;
   pausado = false;
   encerrado = true;
+
   cancelAnimationFrame(animacao);
   limparTeclas();
   desenharRanking("rankingMenu");
@@ -741,11 +802,13 @@ function abrirLoja() {
 
 function renderizarLoja() {
   const container = $("itensLoja");
-  container.innerHTML = "";
+  container.replaceChildren();
+  $("saldoLoja").textContent = dados.moedas;
 
   cores.forEach((skin, index) => {
     const desbloqueada = dados.desbloqueadas.includes(index);
     const selecionada = dados.skin1 === index;
+
     const card = document.createElement("div");
     card.className = "skin";
 
@@ -768,36 +831,51 @@ function renderizarLoja() {
     if (desbloqueada) {
       botao.textContent = selecionada ? "Selecionada" : "Usar skin";
       botao.disabled = selecionada;
-      botao.onclick = () => {
+
+      botao.addEventListener("click", () => {
         dados.skin1 = index;
         salvarDados();
         renderizarLoja();
-      };
+      });
     } else {
       botao.textContent = "Comprar";
       botao.disabled = dados.moedas < skin.preco;
 
-      botao.onclick = () => {
+      botao.addEventListener("click", () => {
         if (dados.moedas < skin.preco) return;
 
         dados.moedas -= skin.preco;
         dados.desbloqueadas.push(index);
         dados.skin1 = index;
+
         salvarDados();
         renderizarLoja();
         som(750, 0.15, "triangle");
-      };
+      });
     }
 
     card.appendChild(botao);
     container.appendChild(card);
   });
+}
 
-  if (modo === 2) {
-    const aviso = document.createElement("p");
-    aviso.textContent = "A skin selecionada será usada pelo Jogador 1. O Jogador 2 usa a cor azul.";
-    container.appendChild(aviso);
+async function alternarTelaCheia() {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      telaCheia = true;
+    } else {
+      await document.exitFullscreen();
+      telaCheia = false;
+    }
+  } catch {
+    mostrarMensagem(
+      "O teu navegador não permitiu ativar a tela cheia. Podes continuar a jogar normalmente."
+    );
   }
+
+  $("btnTelaCheia").textContent =
+    document.fullscreenElement ? "⛶ Sair da tela cheia" : "⛶ Tela cheia";
 }
 
 $("btnJogar").addEventListener("click", iniciarJogo);
@@ -805,31 +883,78 @@ $("btnLoja").addEventListener("click", abrirLoja);
 $("btnVoltar").addEventListener("click", () => mostrar("menu"));
 $("btnPausa").addEventListener("click", alternarPausa);
 $("btnMenu").addEventListener("click", voltarMenu);
+$("btnTelaCheia").addEventListener("click", alternarTelaCheia);
 
 $("btnSom").addEventListener("click", () => {
   somLigado = !somLigado;
-  $("btnSom").textContent = somLigado ? "🔊 Som ligado" : "🔇 Som desligado";
+  $("btnSom").textContent = somLigado
+    ? "🔊 Som ligado"
+    : "🔇 Som desligado";
+
   if (somLigado) som(500, 0.08);
 });
 
+document.addEventListener("fullscreenchange", () => {
+  $("btnTelaCheia").textContent =
+    document.fullscreenElement ? "⛶ Sair da tela cheia" : "⛶ Tela cheia";
+});
+
 window.addEventListener("keydown", e => {
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
-    e.preventDefault();
-  }
+  const teclasJogo = [
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "
+  ];
 
-  teclas[e.key.length === 1 ? e.key.toLowerCase() : e.key] = true;
+  if (teclasJogo.includes(e.key)) e.preventDefault();
 
-  if (e.key.toLowerCase() === "p" && !e.repeat) {
+  const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  teclas[tecla] = true;
+
+  if (tecla === "p" && !e.repeat) {
     alternarPausa();
   }
 });
 
 window.addEventListener("keyup", e => {
-  teclas[e.key.length === 1 ? e.key.toLowerCase() : e.key] = false;
+  const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  teclas[tecla] = false;
 });
 
 window.addEventListener("blur", limparTeclas);
 
+document.querySelectorAll(".controle[data-key]").forEach(botao => {
+  const tecla = botao.dataset.key;
+
+  function soltar() {
+    teclas[tecla] = false;
+    botao.classList.remove("pressionado");
+  }
+
+  botao.addEventListener("pointerdown", e => {
+    e.preventDefault();
+
+    if (!rodando || pausado || encerrado) return;
+
+    try {
+      botao.setPointerCapture(e.pointerId);
+    } catch {}
+
+    teclas[tecla] = true;
+    botao.classList.add("pressionado");
+  });
+
+  botao.addEventListener("pointerup", soltar);
+  botao.addEventListener("pointercancel", soltar);
+  botao.addEventListener("lostpointercapture", soltar);
+  botao.addEventListener("contextmenu", e => e.preventDefault());
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && rodando && !encerrado && !pausado) {
+    alternarPausa();
+  }
+});
+
 atualizarMoedas();
 desenharRanking("rankingMenu");
 mostrar("menu");
+desenhar();
