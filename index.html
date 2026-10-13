@@ -3,121 +3,200 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#080b16">
-  <title>Desvie dos Tiros | Arcade Survival</title>
+
+  <title>Desvie dos Tiros — Online</title>
+
   <link rel="stylesheet" href="style.css">
+
+  <!-- Firebase para o multiplayer online -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script src="script.js" defer></script>
 </head>
+
 <body>
   <main class="container">
-    <header class="topo">
+
+    <header class="top">
       <div>
-        <p class="subtitulo">ARCADE SURVIVAL</p>
+        <div class="sub">ARCADE SURVIVAL • ONLINE</div>
         <h1>DESVIE DOS <span>TIROS</span></h1>
       </div>
-      <div class="moedas">🪙 <span id="moedas">0</span></div>
+
+      <div class="coins">
+        🪙 <b id="coins">0</b>
+      </div>
     </header>
 
-    <section id="menu" class="painel">
-      <h2>Prepare-se para sobreviver</h2>
-      <p>Desvie dos projéteis, colete moedas e bata seus recordes!</p>
+    <!-- MENU PRINCIPAL -->
+    <section id="menu" class="panel">
+      <h2>Prepare-se para sobreviver!</h2>
 
-      <label for="jogadores">Modo de jogo</label>
-      <select id="jogadores">
-        <option value="1">1 jogador</option>
-        <option value="2">2 jogadores</option>
-      </select>
+      <p>
+        Desvie dos projéteis, sobreviva aos níveis,
+        derrote os chefões e conquiste moedas.
+      </p>
 
-      <label for="dificuldade">Dificuldade</label>
-      <select id="dificuldade">
-        <option value="facil">Fácil</option>
-        <option value="normal" selected>Normal</option>
-        <option value="dificil">Difícil</option>
-      </select>
+      <div class="row">
+        <div>
+          <label for="mode">Modo de jogo</label>
 
-      <button id="btnJogar" class="botao principal">▶ JOGAR</button>
-      <button id="btnLoja" class="botao">🛒 LOJA DE SKINS</button>
+          <select id="mode">
+            <option value="solo">Sobrevivência solo</option>
+            <option value="create">Criar sala online</option>
+            <option value="join">Entrar em sala online</option>
+          </select>
+        </div>
 
-      <div class="recordes">
-        <h3>🏆 Melhores sobreviventes</h3>
-        <ol id="rankingMenu"></ol>
+        <div>
+          <label for="difficulty">Dificuldade inicial</label>
+
+          <select id="difficulty">
+            <option value="easy">Fácil</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Difícil</option>
+          </select>
+        </div>
       </div>
 
-      <div class="controles">
-        <p><b>Jogador 1:</b> W A S D</p>
-        <p><b>Jogador 2:</b> setas do teclado</p>
-        <p><b>Pausa:</b> P</p>
+      <div id="nameBox">
+        <label for="playerName">Nome do jogador</label>
+        <input
+          id="playerName"
+          type="text"
+          maxlength="16"
+          placeholder="Digite seu nome"
+          autocomplete="nickname"
+        >
       </div>
+
+      <div id="joinBox" class="hidden">
+        <label for="roomCode">Código da sala</label>
+        <input
+          id="roomCode"
+          type="text"
+          maxlength="6"
+          placeholder="Ex.: A8K2QZ"
+          autocapitalize="characters"
+        >
+      </div>
+
+      <button id="startBtn" class="btn primary full">
+        ▶ JOGAR
+      </button>
+
+      <button id="shopBtn" class="btn full">
+        🛒 LOJA DE SKINS
+      </button>
+
+      <div id="onlineStatus" class="status">
+        Modo solo disponível. Configure o Firebase para jogar online.
+      </div>
+
+      <div class="panel ranking-panel">
+        <h3>🏆 Ranking</h3>
+        <ol id="ranking" class="list">
+          <li>Nenhuma partida registrada ainda.</li>
+        </ol>
+
+        <p class="small">
+          Sobreviva por mais tempo para conseguir uma pontuação maior.
+        </p>
+      </div>
+
+      <p class="small">
+        Computador: WASD ou setas para se movimentar, P para pausar.
+        Celular: use os controles na tela.
+      </p>
     </section>
 
-    <section id="jogo" class="painel escondido">
+    <!-- ÁREA DO JOGO -->
+    <section id="game" class="panel hidden">
+
       <div class="hud">
-        <div>⏱️ <span id="tempo">0.0</span>s</div>
-        <div>⭐ Pontos: <span id="pontos">0</span></div>
-        <div>🪙 <span id="moedasPartida">0</span></div>
-        <div>🌊 Nível: <span id="nivel">1</span></div>
+        <span>
+          ⏱️ Tempo:
+          <b id="time">0.0</b>s
+        </span>
+
+        <span>
+          ⭐ Pontos:
+          <b id="score">0</b>
+        </span>
+
+        <span>
+          🚀 Nível:
+          <b id="level">1</b>
+        </span>
+
+        <span>
+          🪙 Moedas:
+          <b id="earned">0</b>
+        </span>
+
+        <span>
+          👥 Jogadores:
+          <b id="playersCount">1</b>
+        </span>
       </div>
 
-      <div class="barras">
-        <span id="status1">🟢 Jogador 1</span>
-        <span id="status2" class="escondido">🔵 Jogador 2</span>
+      <div id="roomInfo" class="status"></div>
+
+      <canvas
+        id="arena"
+        width="900"
+        height="540"
+        aria-label="Arena do jogo Desvie dos Tiros"
+      ></canvas>
+
+      <!-- CONTROLES PARA CELULAR -->
+      <div class="controls" id="touchControls">
+        <button class="btn blank" disabled>·</button>
+        <button class="btn" data-key="ArrowUp" aria-label="Cima">▲</button>
+        <button class="btn blank" disabled>·</button>
+
+        <button class="btn" data-key="ArrowLeft" aria-label="Esquerda">◀</button>
+        <button class="btn" data-key="ArrowDown" aria-label="Baixo">▼</button>
+        <button class="btn" data-key="ArrowRight" aria-label="Direita">▶</button>
       </div>
 
-      <canvas id="arena" width="900" height="540">
-        O teu navegador não suporta Canvas.
-      </canvas>
-
-      <div id="controlesMobile" class="controles-mobile">
-        <div class="controle-jogador" id="controleP1">
-          <p>🟢 Jogador 1</p>
-          <div class="direcional">
-            <button class="vazio" disabled aria-hidden="true"> </button>
-            <button class="controle" data-key="w" aria-label="Mover para cima">▲</button>
-            <button class="vazio" disabled aria-hidden="true"> </button>
-            <button class="controle" data-key="a" aria-label="Mover para a esquerda">◀</button>
-            <button class="controle" data-key="s" aria-label="Mover para baixo">▼</button>
-            <button class="controle" data-key="d" aria-label="Mover para a direita">▶</button>
-          </div>
-        </div>
-
-        <div class="controle-jogador escondido" id="controleP2">
-          <p>🔵 Jogador 2</p>
-          <div class="direcional">
-            <button class="vazio" disabled aria-hidden="true"> </button>
-            <button class="controle" data-key="ArrowUp" aria-label="Mover para cima">▲</button>
-            <button class="vazio" disabled aria-hidden="true"> </button>
-            <button class="controle" data-key="ArrowLeft" aria-label="Mover para a esquerda">◀</button>
-            <button class="controle" data-key="ArrowDown" aria-label="Mover para baixo">▼</button>
-            <button class="controle" data-key="ArrowRight" aria-label="Mover para a direita">▶</button>
-          </div>
-        </div>
+      <div class="actions">
+        <button id="pauseBtn" class="btn">⏸ Pausar</button>
+        <button id="soundBtn" class="btn">🔊 Som ligado</button>
+        <button id="fullBtn" class="btn">⛶ Tela cheia</button>
+        <button id="menuBtn" class="btn">⌂ Menu</button>
       </div>
 
-      <div class="acoes">
-        <button id="btnPausa" class="botao">⏸ Pausar</button>
-        <button id="btnMenu" class="botao">⌂ Menu</button>
-        <button id="btnSom" class="botao">🔊 Som ligado</button>
-        <button id="btnTelaCheia" class="botao">⛶ Tela cheia</button>
-      </div>
+      <div id="gameMessage" class="message hidden"></div>
 
-      <div id="mensagem" class="mensagem escondido"></div>
-
-      <div class="dicas">
-        🛡️ Escudo: bloqueia um tiro. ⚡ Velocidade: corres mais rápido.
-        ⭐ Estrela: invencibilidade temporária. 🪙 Moeda: ganhas moedas.
-        O chefão aparece a cada 60 segundos!
-      </div>
+      <p class="small">
+        🛡️ Escudo temporário • ⚡ Velocidade • 🪙 Moedas
+        • 👾 Chefões e dificuldade crescente.
+      </p>
     </section>
 
-    <section id="loja" class="painel escondido">
+    <!-- LOJA -->
+    <section id="shop" class="panel hidden">
       <h2>🛒 Loja de skins</h2>
-      <p>Desbloqueia cores com as moedas que recolheres nas partidas.</p>
-      <p>Saldo: 🪙 <b id="saldoLoja">0</b></p>
-      <div id="itensLoja" class="itens-loja"></div>
-      <button id="btnVoltar" class="botao principal">Voltar ao menu</button>
-    </section>
-  </main>
 
-  <script src="script.js"></script>
+      <p>Desbloqueie novas cores usando as moedas das partidas.</p>
+
+      <p>
+        Seu saldo:
+        🪙 <b id="shopCoins">0</b>
+      </p>
+
+      <div id="shopItems" class="shopgrid"></div>
+
+      <button id="backBtn" class="btn primary full">
+        Voltar ao menu
+      </button>
+    </section>
+
+  </main>
 </body>
 </html>

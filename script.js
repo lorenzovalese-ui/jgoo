@@ -1,551 +1,834 @@
 
-const $ = id => document.getElementById(id);
-const canvas = $("arena");
-const ctx = canvas.getContext("2d");
+"use strict";
 
-const cores = [
-  { nome: "Verde", cor: "#42ff9e", preco: 0 },
-  { nome: "Azul", cor: "#43b9ff", preco: 0 },
-  { nome: "Roxo", cor: "#a783ff", preco: 30 },
-  { nome: "Rosa", cor: "#ff64bc", preco: 50 },
-  { nome: "Dourado", cor: "#ffd45b", preco: 80 },
-  { nome: "Vermelho", cor: "#ff5964", preco: 100 }
-];
+// ======================================================
+// DESVIE DOS TIROS — SCRIPT COMPLETO
+// ======================================================
+
+// 1. CONFIGURAÇÃO DO FIREBASE
+// Preencha com os dados do seu projeto Firebase.
+// Sem essa configuração, o modo solo continua funcionando.
+
+const firebaseConfig = {
+  apiKey: "COLOQUE_SUA_API_KEY",
+  authDomain: "SEU-PROJETO.firebaseapp.com",
+  databaseURL: "https://SEU-PROJETO-default-rtdb.firebaseio.com",
+  projectId: "SEU-PROJETO",
+  appId: "COLOQUE_SEU_APP_ID"
+};
+
+let db = null;
+let jogadorOnlineId = null;
+let salaRef = null;
+let salaCodigo = null;
+let modoOnline = false;
+let souAnfitriao = false;
+let ouvintesSala = [];
+
+try {
+  if (
+    firebaseConfig.apiKey !== "COLOQUE_SUA_API_KEY" &&
+    firebaseConfig.projectId !== "SEU-PROJETO"
+  ) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+
+    firebase.auth().signInAnonymously()
+      .then(cred => {
+        jogadorOnlineId = cred.user.uid;
+      })
+      .catch(err => {
+        console.error("Erro de autenticação Firebase:", err);
+      });
+  }
+} catch (error) {
+  console.warn("Firebase ainda não configurado.", error);
+}
+
+// ======================================================
+// 2. ELEMENTOS HTML
+// ======================================================
+
+const $ = id => document.getElementById(id);
+
+const menu = $("menu");
+const game = $("game");
+const shop = $("shop");
+const arena = $("arena");
+const ctx = arena.getContext("2d");
+
+const modeSelect = $("mode");
+const difficultySelect = $("difficulty");
+const playerNameInput = $("playerName");
+const roomCodeInput = $("roomCode");
+
+const startBtn = $("startBtn");
+const shopBtn = $("shopBtn");
+const backBtn = $("backBtn");
+const pauseBtn = $("pauseBtn");
+const soundBtn = $("soundBtn");
+const fullBtn = $("fullBtn");
+const menuBtn = $("menuBtn");
+
+const coinsEl = $("coins");
+const shopCoinsEl = $("shopCoins");
+const timeEl = $("time");
+const scoreEl = $("score");
+const levelEl = $("level");
+const earnedEl = $("earned");
+const playersCountEl = $("playersCount");
+
+const rankingEl = $("ranking");
+const onlineStatusEl = $("onlineStatus");
+const roomInfoEl = $("roomInfo");
+const gameMessageEl = $("gameMessage");
+
+const nameBox = $("nameBox");
+const joinBox = $("joinBox");
+
+// ======================================================
+// 3. SALVAMENTO LOCAL
+// ======================================================
+
+const STORAGE_KEY = "desvieDados";
 
 function carregarDados() {
   try {
-    const dados = JSON.parse(localStorage.getItem("desvieDados"));
+    const dados = JSON.parse(localStorage.getItem(STORAGE_KEY));
 
-    return {
-      moedas: Math.max(0, Number(dados?.moedas) || 0),
-      desbloqueadas: Array.isArray(dados?.desbloqueadas)
-        ? [...new Set([0, 1, ...dados.desbloqueadas.filter(
-            n => Number.isInteger(n) && n >= 0 && n < cores.length
-          )])]
-        : [0, 1],
-      skin1: Number.isInteger(dados?.skin1) ? dados.skin1 : 0,
-      ranking: Array.isArray(dados?.ranking) ? dados.ranking : []
-    };
-  } catch {
-    return {
-      moedas: 0,
-      desbloqueadas: [0, 1],
-      skin1: 0,
-      ranking: []
-    };
+    if (dados && typeof dados === "object") {
+      return {
+        coins: Number(dados.coins) || 0,
+        skins: Array.isArray(dados.skins) ? dados.skins : ["blue"],
+        skin: dados.skin || "blue",
+        ranking: Array.isArray(dados.ranking) ? dados.ranking : []
+      };
+    }
+  } catch (error) {
+    console.warn("Não foi possível ler os dados salvos.");
   }
+
+  return {
+    coins: 0,
+    skins: ["blue"],
+    skin: "blue",
+    ranking: []
+  };
 }
 
-const dados = carregarDados();
-
-let jogadores = [];
-let tiros = [];
-let poderes = [];
-let particulas = [];
-let boss = null;
-let teclas = {};
-
-let modo = 1;
-let dificuldade = "normal";
-let rodando = false;
-let pausado = false;
-let encerrado = false;
-let somLigado = true;
-let telaCheia = false;
-
-let tempoDecorrido = 0;
-let ultimoFrame = 0;
-let ultimoTiro = 0;
-let ultimoPoder = 0;
-let ultimoBoss = 0;
-let moedasPartida = 0;
-let pontos = 0;
-let animacao = null;
-let audio = null;
+let dados = carregarDados();
 
 function salvarDados() {
   try {
-    localStorage.setItem("desvieDados", JSON.stringify(dados));
-  } catch {
-    // O jogo continua funcionando mesmo se o navegador
-    // não permitir guardar dados.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+  } catch (error) {
+    console.warn("Não foi possível salvar os dados.");
   }
 
   atualizarMoedas();
 }
 
 function atualizarMoedas() {
-  $("moedas").textContent = dados.moedas;
-  $("saldoLoja").textContent = dados.moedas;
+  coinsEl.textContent = dados.coins;
+  shopCoinsEl.textContent = dados.coins;
 }
 
-function som(frequencia = 440, duracao = 0.07, tipo = "sine") {
-  if (!somLigado) return;
-
-  try {
-    audio ||= new AudioContext();
-
-    if (audio.state === "suspended") {
-      audio.resume();
-    }
-
-    const oscilador = audio.createOscillator();
-    const volume = audio.createGain();
-
-    oscilador.type = tipo;
-    oscilador.frequency.value = frequencia;
-
-    volume.gain.setValueAtTime(0.045, audio.currentTime);
-    volume.gain.exponentialRampToValueAtTime(
-      0.001,
-      audio.currentTime + duracao
-    );
-
-    oscilador.connect(volume);
-    volume.connect(audio.destination);
-
-    oscilador.start();
-    oscilador.stop(audio.currentTime + duracao);
-  } catch {
-    // O som é opcional.
-  }
-}
-
-function mostrar(tela) {
-  ["menu", "jogo", "loja"].forEach(id => {
-    $(id).classList.toggle("escondido", id !== tela);
-  });
-}
-
-function desenharRanking(id) {
-  const lista = $(id);
-  lista.replaceChildren();
+function atualizarRanking() {
+  rankingEl.innerHTML = "";
 
   if (!dados.ranking.length) {
-    const item = document.createElement("li");
-    item.textContent = "Nenhuma partida registrada ainda.";
-    lista.appendChild(item);
+    const li = document.createElement("li");
+    li.textContent = "Nenhuma partida registrada ainda.";
+    rankingEl.appendChild(li);
     return;
   }
 
-  dados.ranking.slice(0, 5).forEach(registro => {
-    const item = document.createElement("li");
-    item.textContent =
-      `${registro.nome} — ${Number(registro.tempo).toFixed(1)}s`;
-    lista.appendChild(item);
-  });
+  dados.ranking
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
+    .forEach((registro, index) => {
+      const li = document.createElement("li");
+      li.textContent =
+        `${index + 1}. ${registro.name} — ${registro.score} pontos`;
+      rankingEl.appendChild(li);
+    });
 }
 
-function criarJogador(id, x, y, cor) {
+atualizarMoedas();
+atualizarRanking();
+
+// ======================================================
+// 4. LOJA DE SKINS
+// ======================================================
+
+const skins = [
+  { id: "blue", name: "Azul clássico", color: "#48a8ff", price: 0 },
+  { id: "green", name: "Verde neon", color: "#44f0a5", price: 30 },
+  { id: "purple", name: "Roxo cósmico", color: "#bd70ff", price: 60 },
+  { id: "gold", name: "Ouro", color: "#ffd166", price: 100 },
+  { id: "red", name: "Vermelho", color: "#ff5470", price: 150 },
+  { id: "white", name: "Branco estelar", color: "#f4f7ff", price: 220 }
+];
+
+function abrirLoja() {
+  menu.classList.add("hidden");
+  game.classList.add("hidden");
+  shop.classList.remove("hidden");
+  renderizarLoja();
+}
+
+function renderizarLoja() {
+  const container = $("shopItems");
+  container.innerHTML = "";
+
+  skins.forEach(skin => {
+    const desbloqueada = dados.skins.includes(skin.id);
+    const selecionada = dados.skin === skin.id;
+
+    const card = document.createElement("div");
+    card.className = "shop-item";
+
+    const preview = document.createElement("div");
+    preview.className = "skin-preview";
+    preview.style.background = skin.color;
+    preview.style.color = skin.color;
+
+    const titulo = document.createElement("h3");
+    titulo.textContent = skin.name;
+
+    const preco = document.createElement("p");
+    preco.textContent = skin.price === 0
+      ? "Grátis"
+      : `Preço: ${skin.price} moedas`;
+
+    const botao = document.createElement("button");
+    botao.className = "btn";
+
+    if (selecionada) {
+      botao.textContent = "Selecionada";
+      botao.disabled = true;
+    } else if (desbloqueada) {
+      botao.textContent = "Selecionar";
+      botao.addEventListener("click", () => {
+        dados.skin = skin.id;
+        salvarDados();
+        renderizarLoja();
+      });
+    } else {
+      botao.textContent = `Comprar (${skin.price} 🪙)`;
+
+      botao.addEventListener("click", () => {
+        if (dados.coins < skin.price) {
+          alert("Você não tem moedas suficientes!");
+          return;
+        }
+
+        dados.coins -= skin.price;
+        dados.skins.push(skin.id);
+        dados.skin = skin.id;
+
+        salvarDados();
+        renderizarLoja();
+      });
+    }
+
+    card.append(preview, titulo, preco, botao);
+    container.appendChild(card);
+  });
+
+  atualizarMoedas();
+}
+
+// ======================================================
+// 5. ESTADO DO JOGO
+// ======================================================
+
+const W = arena.width;
+const H = arena.height;
+
+let jogadores = [];
+let tiros = [];
+let itens = [];
+let particulas = [];
+
+let rodando = false;
+let pausado = false;
+let somLigado = true;
+let gameOverFlag = false;
+
+let inicioPartida = 0;
+let ultimoFrame = 0;
+let tempoJogo = 0;
+let pontos = 0;
+let moedasPartida = 0;
+let nivel = 1;
+
+let intervaloTiro = 0;
+let intervaloItem = 0;
+let ultimoTiro = 0;
+let ultimoItem = 0;
+let ultimoChefe = 0;
+
+let dificuldadeInicial = "normal";
+let velocidadeJogo = 1;
+let chefe = null;
+let audioContext = null;
+
+const teclas = Object.create(null);
+
+const coresTiro = ["#ff5470", "#ff9e64", "#ffdc69"];
+
+function obterCorSkin(id) {
+  return skins.find(s => s.id === id)?.color || "#48a8ff";
+}
+
+function criarJogador(id, nome, x, y, cor) {
   return {
     id,
+    nome,
     x,
     y,
     raio: 13,
+    velocidade: 235,
     cor,
     vivo: true,
-    escudo: 0,
-    velocidadeExtra: 0,
-    invencivel: 0,
-    sobreviveu: 0
+    escudoAte: 0,
+    invencivelAte: 0,
+    velocidadeAte: 0,
+    tempoSobrevivido: 0
   };
 }
 
-function limparTeclas() {
-  teclas = {};
+// ======================================================
+// 6. SOM
+// ======================================================
 
-  document.querySelectorAll(".controle[data-key]").forEach(botao => {
-    botao.classList.remove("pressionado");
-  });
-}
+function tocarSom(frequencia = 440, duracao = 0.08, tipo = "sine") {
+  if (!somLigado) return;
 
-function iniciarJogo() {
-  modo = Number($("jogadores").value);
-  dificuldade = $("dificuldade").value;
+  try {
+    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
 
-  const cor1 = cores[dados.skin1]?.cor || cores[0].cor;
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
 
-  jogadores = [
-    criarJogador(1, canvas.width * 0.35, canvas.height / 2, cor1)
-  ];
+    const oscilador = audioContext.createOscillator();
+    const volume = audioContext.createGain();
 
-  if (modo === 2) {
-    jogadores.push(
-      criarJogador(2, canvas.width * 0.65, canvas.height / 2, cores[1].cor)
+    oscilador.type = tipo;
+    oscilador.frequency.value = frequencia;
+    volume.gain.value = 0.045;
+
+    oscilador.connect(volume);
+    volume.connect(audioContext.destination);
+
+    oscilador.start();
+    volume.gain.exponentialRampToValueAtTime(
+      0.001,
+      audioContext.currentTime + duracao
     );
+    oscilador.stop(audioContext.currentTime + duracao);
+  } catch (error) {
+    // O jogo continua mesmo se o áudio não estiver disponível.
   }
-
-  tiros = [];
-  poderes = [];
-  particulas = [];
-  boss = null;
-  teclas = {};
-
-  pontos = 0;
-  moedasPartida = 0;
-  tempoDecorrido = 0;
-  ultimoTiro = 0;
-  ultimoPoder = 0;
-  ultimoBoss = 0;
-  ultimoFrame = 0;
-
-  encerrado = false;
-  pausado = false;
-  rodando = true;
-
-  $("mensagem").classList.add("escondido");
-  $("status2").classList.toggle("escondido", modo !== 2);
-  $("controleP2").classList.toggle("escondido", modo !== 2);
-  $("controleP1").classList.remove("escondido");
-
-  $("btnPausa").textContent = "⏸ Pausar";
-  $("moedasPartida").textContent = "0";
-  $("pontos").textContent = "0";
-  $("tempo").textContent = "0.0";
-  $("nivel").textContent = "1";
-
-  mostrar("jogo");
-  som(520, 0.1);
-
-  cancelAnimationFrame(animacao);
-  animacao = requestAnimationFrame(loop);
 }
 
-function loop(agora) {
-  if (!rodando || encerrado) return;
+// ======================================================
+// 7. DIFICULDADE INFINITA
+// ======================================================
 
-  // Ao pausar, o tempo e os objetos ficam parados.
-  if (pausado) {
-    ultimoFrame = agora;
-    desenhar();
-    animacao = requestAnimationFrame(loop);
+function calcularNivel(tempo) {
+  // O nível sobe a cada 15 segundos.
+  // Não existe limite máximo.
+  return Math.floor(tempo / 15) + 1;
+}
+
+function atualizarDificuldade() {
+  nivel = calcularNivel(tempoJogo);
+
+  const multiplicadorInicial = {
+    easy: 0.75,
+    normal: 1,
+    hard: 1.3
+  }[dificuldadeInicial] || 1;
+
+  // Crescimento progressivo e sem limite fixo.
+  velocidadeJogo = multiplicadorInicial *
+    (1 + Math.log1p(nivel - 1) * 0.48 + (nivel - 1) * 0.035);
+
+  // Os intervalos diminuem conforme o nível sobe.
+  // Há um limite mínimo para manter o jogo executável.
+  intervaloTiro = Math.max(
+    0.12,
+    0.9 / (1 + (nivel - 1) * 0.085)
+  );
+
+  // A cada nível, aumentamos a quantidade de projéteis.
+  // O aumento é gradual, sem um nível final.
+  const quantidadeBase = 2 + Math.floor((nivel - 1) / 2);
+
+  return {
+    multiplicadorInicial,
+    quantidadeBase,
+    velocidade: velocidadeJogo
+  };
+}
+
+function atualizarHUD() {
+  timeEl.textContent = tempoJogo.toFixed(1);
+  scoreEl.textContent = pontos;
+  levelEl.textContent = nivel;
+  earnedEl.textContent = moedasPartida;
+}
+
+// ======================================================
+// 8. INICIAR PARTIDA
+// ======================================================
+
+function iniciarPartida() {
+  limparTeclas();
+
+  modoOnline = modeSelect.value === "create" ||
+               modeSelect.value === "join";
+
+  if (modoOnline && !db) {
+    onlineStatusEl.textContent =
+      "Configure o Firebase no script.js antes de jogar online.";
     return;
   }
 
-  const dt = ultimoFrame
-    ? Math.min((agora - ultimoFrame) / 1000, 0.035)
-    : 0;
+  dificuldadeInicial = difficultySelect.value;
 
-  ultimoFrame = agora;
-  tempoDecorrido += dt;
+  tempoJogo = 0;
+  pontos = 0;
+  moedasPartida = 0;
+  nivel = 1;
 
-  atualizar(dt, agora);
-  desenhar();
+  tiros = [];
+  itens = [];
+  particulas = [];
+  chefe = null;
+
+  inicioPartida = performance.now();
+  ultimoFrame = inicioPartida;
+  ultimoTiro = 0;
+  ultimoItem = 0;
+  ultimoChefe = 0;
+
+  const nome = playerNameInput.value.trim().slice(0, 16) ||
+               "Jogador";
+
+  jogadores = [
+    criarJogador(
+      1,
+      nome,
+      W / 2,
+      H / 2,
+      obterCorSkin(dados.skin)
+    )
+  ];
+
+  gameOverFlag = false;
+  pausado = false;
+  rodando = true;
+
+  menu.classList.add("hidden");
+  shop.classList.add("hidden");
+  game.classList.remove("hidden");
+  gameMessageEl.classList.add("hidden");
+
+  pauseBtn.textContent = "⏸ Pausar";
+  roomInfoEl.textContent = modoOnline
+    ? "Conectando à sala online..."
+    : "Modo solo — sobreviva o máximo possível!";
+
+  atualizarDificuldade();
   atualizarHUD();
 
-  if (rodando && !encerrado) {
-    animacao = requestAnimationFrame(loop);
+  if (modoOnline) {
+    prepararSalaOnline().catch(error => {
+      console.error(error);
+      onlineStatusEl.textContent =
+        "Não foi possível conectar à sala. Verifique a configuração do Firebase.";
+    });
   }
+
+  requestAnimationFrame(loop);
 }
 
-function atualizar(dt, agora) {
-  const nivel = Math.floor(tempoDecorrido / 15) + 1;
+// ======================================================
+// 9. SALAS ONLINE FIREBASE
+// ======================================================
 
-  const multiplicador = dificuldade === "facil" ? 0.75 :
-    dificuldade === "dificil" ? 1.45 : 1;
-
-  const intervaloTiro = Math.max(
-    180,
-    (850 - (nivel - 1) * 65) / multiplicador
-  );
-
-  if (agora - ultimoTiro >= intervaloTiro) {
-    criarTiro();
-    ultimoTiro = agora;
-  }
-
-  if (agora - ultimoPoder >= 8500) {
-    criarPoder();
-    ultimoPoder = agora;
-  }
-
-  if (
-    tempoDecorrido >= 60 &&
-    tempoDecorrido - ultimoBoss >= 60
-  ) {
-    criarBoss();
-    ultimoBoss = tempoDecorrido;
-  }
-
-  jogadores.forEach(j => {
-    if (!j.vivo) return;
-
-    j.sobreviveu = tempoDecorrido;
-    j.escudo = Math.max(0, j.escudo - dt);
-    j.velocidadeExtra = Math.max(0, j.velocidadeExtra - dt);
-    j.invencivel = Math.max(0, j.invencivel - dt);
-
-    const velocidade =
-      (230 + (j.velocidadeExtra > 0 ? 125 : 0)) * dt;
-
-    let dx = 0;
-    let dy = 0;
-
-    if (j.id === 1) {
-      if (teclas.w) dy--;
-      if (teclas.s) dy++;
-      if (teclas.a) dx--;
-      if (teclas.d) dx++;
-    } else {
-      if (teclas.ArrowUp) dy--;
-      if (teclas.ArrowDown) dy++;
-      if (teclas.ArrowLeft) dx--;
-      if (teclas.ArrowRight) dx++;
-    }
-
-    if (dx !== 0 && dy !== 0) {
-      dx *= Math.SQRT1_2;
-      dy *= Math.SQRT1_2;
-    }
-
-    j.x += dx * velocidade;
-    j.y += dy * velocidade;
-
-    j.x = Math.max(j.raio, Math.min(canvas.width - j.raio, j.x));
-    j.y = Math.max(j.raio, Math.min(canvas.height - j.raio, j.y));
+function removerOuvintesSala() {
+  ouvintesSala.forEach(({ ref, evento, callback }) => {
+    ref.off(evento, callback);
   });
 
-  tiros.forEach(t => {
-    t.x += t.dx * dt;
-    t.y += t.dy * dt;
-  });
-
-  tiros = tiros.filter(t =>
-    t.x > -40 &&
-    t.x < canvas.width + 40 &&
-    t.y > -40 &&
-    t.y < canvas.height + 40
-  );
-
-  poderes.forEach(p => {
-    p.tempo += dt;
-  });
-
-  poderes = poderes.filter(p => p.tempo < 12 && !p.coletado);
-
-  if (boss) {
-    boss.x += boss.dx * dt;
-
-    if (boss.x < 70 || boss.x > canvas.width - 70) {
-      boss.dx *= -1;
-    }
-
-    boss.tempo += dt;
-
-    if (boss.tempo >= 0.8) {
-      criarTiroBoss();
-      boss.tempo = 0;
-    }
-
-    if (boss.vida <= 0) {
-      criarParticulas(boss.x, boss.y, "#ff5964", 35);
-      moedasPartida += 15;
-      dados.moedas += 15;
-      boss = null;
-      salvarDados();
-      som(700, 0.3, "triangle");
-    }
-  }
-
-  verificarColisoes();
-  atualizarParticulas(dt);
-
-  pontos = Math.floor(tempoDecorrido * 10) + moedasPartida * 5;
+  ouvintesSala = [];
 }
 
-function criarTiro() {
-  const lado = Math.floor(Math.random() * 4);
-  let x, y;
+async function prepararSalaOnline() {
+  if (!db) throw new Error("Firebase não configurado.");
 
-  if (lado === 0) {
-    x = Math.random() * canvas.width;
-    y = -10;
-  } else if (lado === 1) {
-    x = canvas.width + 10;
-    y = Math.random() * canvas.height;
-  } else if (lado === 2) {
-    x = Math.random() * canvas.width;
-    y = canvas.height + 10;
+  if (!jogadorOnlineId) {
+    const cred = await firebase.auth().signInAnonymously();
+    jogadorOnlineId = cred.user.uid;
+  }
+
+  const modo = modeSelect.value;
+
+  if (modo === "create") {
+    salaCodigo = Math.random().toString(36)
+      .substring(2, 8).toUpperCase();
+
+    salaRef = db.ref("salas/" + salaCodigo);
+
+    await salaRef.set({
+      anfitriao: jogadorOnlineId,
+      estado: "aguardando",
+      criadoEm: firebase.database.ServerValue.TIMESTAMP
+    });
+
+    souAnfitriao = true;
   } else {
-    x = -10;
-    y = Math.random() * canvas.height;
+    salaCodigo = roomCodeInput.value.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{6}$/.test(salaCodigo)) {
+      throw new Error("Digite um código de sala válido com 6 caracteres.");
+    }
+
+    salaRef = db.ref("salas/" + salaCodigo);
+
+    const snapshot = await salaRef.once("value");
+
+    if (!snapshot.exists()) {
+      throw new Error("Sala não encontrada.");
+    }
+
+    souAnfitriao = false;
   }
 
-  const alvos = jogadores.filter(j => j.vivo);
-  if (!alvos.length) return;
+  const nome = playerNameInput.value.trim().slice(0, 16) || "Jogador";
 
-  const alvo = alvos[Math.floor(Math.random() * alvos.length)];
-  const angulo = Math.atan2(alvo.y - y, alvo.x - x);
+  const meusDados = {
+    nome,
+    x: W / 2,
+    y: H / 2,
+    cor: obterCorSkin(dados.skin),
+    conectado: true,
+    atualizadoEm: firebase.database.ServerValue.TIMESTAMP
+  };
 
-  const nivel = Math.floor(tempoDecorrido / 15) + 1;
-  const base = dificuldade === "facil" ? 115 :
-    dificuldade === "dificil" ? 205 : 155;
+  await salaRef.child("jogadores/" + jogadorOnlineId).set(meusDados);
+  await salaRef.child("jogadores/" + jogadorOnlineId)
+    .onDisconnect().remove();
 
-  const velocidade = base + nivel * 13;
+  roomInfoEl.textContent = `Sala: ${salaCodigo} — compartilhe este código!`;
+  onlineStatusEl.textContent = `Conectado à sala ${salaCodigo}.`;
 
+  const jogadoresRef = salaRef.child("jogadores");
+
+  const callback = snapshot => {
+    if (!snapshot.exists()) return;
+
+    const lista = snapshot.val();
+    const quantidade = Object.keys(lista).length;
+
+    playersCountEl.textContent = quantidade;
+
+    // Os demais jogadores aparecem como avatares na arena.
+    Object.entries(lista).forEach(([id, info]) => {
+      if (id === jogadorOnlineId) return;
+
+      let outro = jogadores.find(j => j.id === id);
+
+      if (!outro) {
+        outro = criarJogador(
+          id,
+          info.nome || "Jogador",
+          Number(info.x) || W / 2,
+          Number(info.y) || H / 2,
+          info.cor || "#44f0a5"
+        );
+
+        outro.remoto = true;
+        jogadores.push(outro);
+      }
+
+      outro.nome = info.nome || "Jogador";
+      outro.x = Number(info.x) || outro.x;
+      outro.y = Number(info.y) || outro.y;
+      outro.cor = info.cor || outro.cor;
+    });
+  };
+
+  jogadoresRef.on("value", callback);
+  ouvintesSala.push({
+    ref: jogadoresRef,
+    evento: "value",
+    callback
+  });
+}
+
+let ultimoEnvioOnline = 0;
+
+function enviarPosicaoOnline(agora) {
+  if (!modoOnline || !salaRef || !jogadorOnlineId) return;
+  if (agora - ultimoEnvioOnline < 80) return;
+
+  ultimoEnvioOnline = agora;
+
+  const eu = jogadores.find(j => j.id === 1 && !j.remoto);
+  if (!eu) return;
+
+  salaRef.child("jogadores/" + jogadorOnlineId).update({
+    x: eu.x,
+    y: eu.y,
+    cor: eu.cor,
+    atualizadoEm: firebase.database.ServerValue.TIMESTAMP
+  }).catch(error => {
+    console.warn("Falha ao atualizar jogador online:", error);
+  });
+}
+
+async function sairDaSala() {
+  removerOuvintesSala();
+
+  if (salaRef && jogadorOnlineId) {
+    try {
+      await salaRef.child("jogadores/" + jogadorOnlineId).remove();
+    } catch (error) {
+      console.warn("Não foi possível sair da sala.", error);
+    }
+  }
+
+  salaRef = null;
+  salaCodigo = null;
+  modoOnline = false;
+  souAnfitriao = false;
+}
+
+// ======================================================
+// 10. PROJÉTEIS E ATAQUES
+// ======================================================
+
+function criarTiro(x, y, vx, vy, raio = 7, cor) {
   tiros.push({
     x,
     y,
-    dx: Math.cos(angulo) * velocidade,
-    dy: Math.sin(angulo) * velocidade,
-    raio: 6,
-    cor: "#ff5964"
+    vx,
+    vy,
+    raio,
+    cor: cor || coresTiro[
+      Math.floor(Math.random() * coresTiro.length)
+    ]
   });
 }
 
-function criarTiroBoss() {
-  if (!boss) return;
+function criarTiroDaBorda(alvo) {
+  const lado = Math.floor(Math.random() * 4);
 
-  const alvos = jogadores.filter(j => j.vivo);
-  if (!alvos.length) return;
+  let x;
+  let y;
 
-  const alvo = alvos[Math.floor(Math.random() * alvos.length)];
-  const base = Math.atan2(alvo.y - boss.y, alvo.x - boss.x);
+  if (lado === 0) {
+    x = Math.random() * W;
+    y = -10;
+  } else if (lado === 1) {
+    x = W + 10;
+    y = Math.random() * H;
+  } else if (lado === 2) {
+    x = Math.random() * W;
+    y = H + 10;
+  } else {
+    x = -10;
+    y = Math.random() * H;
+  }
 
-  for (let i = -2; i <= 2; i++) {
-    const angulo = base + i * 0.18;
+  const dx = alvo.x - x;
+  const dy = alvo.y - y;
+  const distancia = Math.hypot(dx, dy) || 1;
 
-    tiros.push({
-      x: boss.x,
-      y: boss.y + 25,
-      dx: Math.cos(angulo) * 190,
-      dy: Math.sin(angulo) * 190,
-      raio: 7,
-      cor: "#ff9d42"
-    });
+  const fator = velocidadeJogo;
+
+  const velocidadeBase = 115 + Math.min(nivel * 3, 450);
+
+  criarTiro(
+    x,
+    y,
+    (dx / distancia) * velocidadeBase * fator,
+    (dy / distancia) * velocidadeBase * fator
+  );
+}
+
+function criarRajadaCircular() {
+  const alvo = jogadores.find(j => j.vivo && !j.remoto);
+  if (!alvo) return;
+
+  const quantidade = Math.min(8 + nivel, 50);
+  const velocidade = (100 + nivel * 4) * velocidadeJogo;
+
+  for (let i = 0; i < quantidade; i++) {
+    const angulo = (Math.PI * 2 * i) / quantidade;
+
+    criarTiro(
+      chefe ? chefe.x : W / 2,
+      chefe ? chefe.y : H / 2,
+      Math.cos(angulo) * velocidade,
+      Math.sin(angulo) * velocidade,
+      6
+    );
   }
 }
 
-function criarBoss() {
-  boss = {
-    x: canvas.width / 2,
-    y: 75,
-    raio: 32,
-    vida: 12,
-    vidaMaxima: 12,
-    dx: 125,
-    tempo: 0
+// ======================================================
+// 11. CHEFÕES
+// ======================================================
+
+function criarChefe() {
+  chefe = {
+    x: W / 2,
+    y: 90,
+    raio: 27,
+    vida: 20 + nivel * 5,
+    vidaMaxima: 20 + nivel * 5,
+    velocidade: 65 + nivel * 2,
+    direcao: 1,
+    ultimoAtaque: 0
   };
 
-  som(120, 0.5, "sawtooth");
-  mostrarMensagem("⚠️ CHEFÃO! Usa a estrela de invencibilidade para causar dano ao encostar nele.");
+  gameMessageEl.textContent = `⚠️ CHEFÃO DO NÍVEL ${nivel}!`;
+  gameMessageEl.classList.remove("hidden");
+
+  tocarSom(130, 0.35, "sawtooth");
 }
 
-function mostrarMensagem(texto, duracao = 3500) {
-  const mensagem = $("mensagem");
-  mensagem.textContent = texto;
-  mensagem.classList.remove("escondido");
+function atualizarChefe(dt, agora) {
+  if (!chefe) return;
 
-  if (mensagem._timer) clearTimeout(mensagem._timer);
+  chefe.x += chefe.direcao * chefe.velocidade * velocidadeJogo * dt;
 
-  mensagem._timer = setTimeout(() => {
-    if (!encerrado) mensagem.classList.add("escondido");
-  }, duracao);
+  if (chefe.x < chefe.raio || chefe.x > W - chefe.raio) {
+    chefe.direcao *= -1;
+  }
+
+  if (agora - chefe.ultimoAtaque > Math.max(300, 1300 - nivel * 20)) {
+    chefe.ultimoAtaque = agora;
+    criarRajadaCircular();
+  }
 }
 
-function criarPoder() {
-  const tipos = ["escudo", "velocidade", "estrela", "moeda"];
+function desenharChefe() {
+  if (!chefe) return;
+
+  ctx.save();
+
+  ctx.shadowColor = "#ff5470";
+  ctx.shadowBlur = 25;
+
+  ctx.fillStyle = "#ff5470";
+  ctx.beginPath();
+  ctx.arc(chefe.x, chefe.y, chefe.raio, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(chefe.x - 30, chefe.y - 42, 60, 6);
+
+  ctx.fillStyle = "#44f0a5";
+  ctx.fillRect(
+    chefe.x - 30,
+    chefe.y - 42,
+    60 * Math.max(0, chefe.vida / chefe.vidaMaxima),
+    6
+  );
+
+  ctx.restore();
+}
+
+// ======================================================
+// 12. ITENS E PODERES
+// ======================================================
+
+function criarItem() {
+  const tipos = ["escudo", "velocidade", "invencivel", "moeda"];
   const tipo = tipos[Math.floor(Math.random() * tipos.length)];
 
-  poderes.push({
-    x: 30 + Math.random() * (canvas.width - 60),
-    y: 30 + Math.random() * (canvas.height - 60),
+  itens.push({
+    x: 25 + Math.random() * (W - 50),
+    y: 25 + Math.random() * (H - 50),
+    raio: 11,
     tipo,
-    tempo: 0,
-    raio: 12,
-    simbolo: {
-      escudo: "🛡",
-      velocidade: "⚡",
-      estrela: "★",
-      moeda: "●"
-    }[tipo]
+    criado: performance.now()
   });
 }
 
-function distancia(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function verificarColisoes() {
-  jogadores.forEach(j => {
-    if (!j.vivo) return;
-
-    poderes.forEach(p => {
-      if (!p.coletado && distancia(j, p) < j.raio + p.raio + 3) {
-        p.coletado = true;
-        coletarPoder(j, p);
-      }
-    });
-
-    tiros.forEach(t => {
-      if (distancia(j, t) >= j.raio + t.raio) return;
-
-      if (j.invencivel > 0) {
-        criarParticulas(t.x, t.y, "#ffd45b", 4);
-        t.x = -1000;
-      } else if (j.escudo > 0) {
-        j.escudo = 0;
-        criarParticulas(j.x, j.y, "#43b9ff", 12);
-        t.x = -1000;
-        som(250, 0.15);
-      } else {
-        j.vivo = false;
-        criarParticulas(j.x, j.y, j.cor, 25);
-        som(100, 0.25, "sawtooth");
-      }
-    });
-
-    if (boss && distancia(j, boss) < j.raio + boss.raio) {
-      if (j.invencivel > 0) {
-        boss.vida -= 0.2;
-      } else if (j.escudo > 0) {
-        j.escudo = 0;
-        boss.vida -= 1;
-      } else {
-        j.vivo = false;
-        criarParticulas(j.x, j.y, j.cor, 25);
-      }
-    }
-  });
-
-  if (jogadores.length && jogadores.every(j => !j.vivo)) {
-    gameOver();
-  }
-}
-
-function coletarPoder(j, p) {
-  som(650, 0.12, "triangle");
-
-  if (p.tipo === "escudo") {
-    j.escudo = 7;
-    mostrarMensagem("🛡 Escudo ativado por 7 segundos!", 1600);
-  } else if (p.tipo === "velocidade") {
-    j.velocidadeExtra = 7;
-    mostrarMensagem("⚡ Velocidade aumentada por 7 segundos!", 1600);
-  } else if (p.tipo === "estrela") {
-    j.invencivel = 4;
-    mostrarMensagem("⭐ Invencibilidade por 4 segundos!", 1600);
-  } else if (p.tipo === "moeda") {
+function ativarItem(item, jogador, agora) {
+  if (item.tipo === "escudo") {
+    jogador.escudoAte = agora + 6000;
+    tocarSom(660);
+  } else if (item.tipo === "velocidade") {
+    jogador.velocidadeAte = agora + 5000;
+    tocarSom(800);
+  } else if (item.tipo === "invencivel") {
+    jogador.invencivelAte = agora + 3000;
+    tocarSom(950);
+  } else if (item.tipo === "moeda") {
     moedasPartida += 5;
-    dados.moedas += 5;
-    salvarDados();
-    mostrarMensagem("🪙 Ganhaste 5 moedas!", 1600);
+    tocarSom(1100);
   }
 
-  criarParticulas(p.x, p.y, "#ffd45b", 12);
+  criarParticulas(item.x, item.y, "#ffd166", 12);
 }
 
-function criarParticulas(x, y, cor, quantidade) {
+function desenharItens(agora) {
+  itens.forEach(item => {
+    const cores = {
+      escudo: "#48a8ff",
+      velocidade: "#44f0a5",
+      invencivel: "#bd70ff",
+      moeda: "#ffd166"
+    };
+
+    const simbolos = {
+      escudo: "S",
+      velocidade: "V",
+      invencivel: "I",
+      moeda: "$"
+    };
+
+    ctx.beginPath();
+    ctx.fillStyle = cores[item.tipo];
+    ctx.arc(item.x, item.y, item.raio, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#080b16";
+    ctx.font = "bold 12px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(simbolos[item.tipo], item.x, item.y);
+  });
+}
+
+// ======================================================
+// 13. PARTÍCULAS
+// ======================================================
+
+function criarParticulas(x, y, cor, quantidade = 8) {
   for (let i = 0; i < quantidade; i++) {
     const angulo = Math.random() * Math.PI * 2;
-    const velocidade = 40 + Math.random() * 180;
+    const velocidade = 35 + Math.random() * 140;
 
     particulas.push({
       x,
       y,
-      dx: Math.cos(angulo) * velocidade,
-      dy: Math.sin(angulo) * velocidade,
-      vida: 0.5 + Math.random() * 0.5,
+      vx: Math.cos(angulo) * velocidade,
+      vy: Math.sin(angulo) * velocidade,
+      vida: 0.35 + Math.random() * 0.5,
       cor
     });
   }
@@ -553,124 +836,15 @@ function criarParticulas(x, y, cor, quantidade) {
 
 function atualizarParticulas(dt) {
   particulas.forEach(p => {
-    p.x += p.dx * dt;
-    p.y += p.dy * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
     p.vida -= dt;
   });
 
   particulas = particulas.filter(p => p.vida > 0);
 }
 
-function desenhar() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#080d19";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = "#18233a";
-  ctx.lineWidth = 1;
-
-  for (let x = 0; x < canvas.width; x += 30) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-
-  for (let y = 0; y < canvas.height; y += 30) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-
-  poderes.forEach(p => {
-    ctx.save();
-    ctx.shadowColor = "#ffd45b";
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = "#ffd45b";
-
-    ctx.beginPath();
-    ctx.arc(
-      p.x,
-      p.y,
-      p.raio + Math.sin(p.tempo * 6) * 2,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-    ctx.restore();
-
-    ctx.fillStyle = "#080d19";
-    ctx.font = "bold 15px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(p.simbolo, p.x, p.y);
-  });
-
-  tiros.forEach(t => {
-    ctx.save();
-    ctx.shadowColor = t.cor;
-    ctx.shadowBlur = 15;
-    ctx.fillStyle = t.cor;
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, t.raio, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  });
-
-  if (boss) {
-    ctx.save();
-    ctx.shadowColor = "#ff5964";
-    ctx.shadowBlur = 25;
-    ctx.fillStyle = "#b51e46";
-    ctx.beginPath();
-    ctx.arc(boss.x, boss.y, boss.raio, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 17px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("BOSS", boss.x, boss.y + 6);
-
-    ctx.fillStyle = "#391421";
-    ctx.fillRect(boss.x - 45, boss.y - 48, 90, 7);
-    ctx.fillStyle = "#ff5964";
-    ctx.fillRect(
-      boss.x - 45,
-      boss.y - 48,
-      90 * Math.max(0, boss.vida / boss.vidaMaxima),
-      7
-    );
-  }
-
-  jogadores.forEach(j => {
-    if (!j.vivo) return;
-
-    ctx.save();
-    ctx.shadowColor = j.invencivel > 0 ? "#ffd45b" : j.cor;
-    ctx.shadowBlur = j.invencivel > 0 ? 28 : 18;
-    ctx.fillStyle = j.invencivel > 0 ? "#ffd45b" : j.cor;
-
-    ctx.beginPath();
-    ctx.arc(j.x, j.y, j.raio, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    if (j.escudo > 0) {
-      ctx.strokeStyle = "#43b9ff";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(j.x, j.y, j.raio + 7, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "11px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("P" + j.id, j.x, j.y - 21);
-  });
-
+function desenharParticulas() {
   particulas.forEach(p => {
     ctx.globalAlpha = Math.min(1, p.vida * 2);
     ctx.fillStyle = p.cor;
@@ -678,184 +852,392 @@ function desenhar() {
   });
 
   ctx.globalAlpha = 1;
+}
 
-  if (pausado) {
-    ctx.fillStyle = "#0009";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 38px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("PAUSADO", canvas.width / 2, canvas.height / 2);
-    ctx.font = "16px Arial";
-    ctx.fillText(
-      "Pressiona continuar para jogar",
-      canvas.width / 2,
-      canvas.height / 2 + 35
-    );
+// ======================================================
+// 14. MOVIMENTO E COLISÕES
+// ======================================================
+
+function moverJogador(j, dt, agora) {
+  if (!j.vivo || j.remoto) return;
+
+  let dx = 0;
+  let dy = 0;
+
+  if (teclas.ArrowLeft || teclas.a) dx -= 1;
+  if (teclas.ArrowRight || teclas.d) dx += 1;
+  if (teclas.ArrowUp || teclas.w) dy -= 1;
+  if (teclas.ArrowDown || teclas.s) dy += 1;
+
+  const comprimento = Math.hypot(dx, dy) || 1;
+
+  const multiplicador = agora < j.velocidadeAte ? 1.7 : 1;
+
+  j.x += (dx / comprimento) * j.velocidade * multiplicador * dt;
+  j.y += (dy / comprimento) * j.velocidade * multiplicador * dt;
+
+  j.x = Math.max(j.raio, Math.min(W - j.raio, j.x));
+  j.y = Math.max(j.raio, Math.min(H - j.raio, j.y));
+
+  j.tempoSobrevivido = tempoJogo;
+}
+
+function verificarColisoes(agora) {
+  jogadores.forEach(j => {
+    if (!j.vivo || j.remoto) return;
+
+    tiros.forEach(t => {
+      const distancia = Math.hypot(j.x - t.x, j.y - t.y);
+
+      if (distancia < j.raio + t.raio) {
+        if (agora < j.invencivelAte) {
+          criarParticulas(t.x, t.y, "#bd70ff", 3);
+          t.fora = true;
+        } else if (agora < j.escudoAte) {
+          j.escudoAte = 0;
+          t.fora = true;
+          criarParticulas(j.x, j.y, "#48a8ff", 15);
+          tocarSom(300, 0.12);
+        } else {
+          j.vivo = false;
+          criarParticulas(j.x, j.y, "#ff5470", 25);
+          tocarSom(100, 0.3, "sawtooth");
+        }
+      }
+    });
+
+    itens.forEach(item => {
+      const distancia = Math.hypot(j.x - item.x, j.y - item.y);
+
+      if (distancia < j.raio + item.raio) {
+        ativarItem(item, j, agora);
+        item.pego = true;
+      }
+    });
+  });
+
+  if (chefe) {
+    tiros.forEach(t => {
+      if (t.fora) return;
+
+      const distancia = Math.hypot(chefe.x - t.x, chefe.y - t.y);
+
+      // O jogador não dispara projéteis nesta versão;
+      // o chefe é vencido por sobrevivência.
+      if (distancia < chefe.raio + t.raio) {
+        // Os tiros inimigos não causam dano ao próprio chefe.
+      }
+    });
+  }
+
+  tiros = tiros.filter(t =>
+    !t.fora &&
+    t.x > -80 && t.x < W + 80 &&
+    t.y > -80 && t.y < H + 80
+  );
+
+  itens = itens.filter(item => !item.pego);
+}
+
+// ======================================================
+// 15. DESENHO DA ARENA
+// ======================================================
+
+function desenharFundo() {
+  ctx.fillStyle = "#070b15";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = "#18233b";
+  ctx.lineWidth = 1;
+
+  const tamanho = 36;
+
+  for (let x = 0; x < W; x += tamanho) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+
+  for (let y = 0; y < H; y += tamanho) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
   }
 }
 
-function atualizarHUD() {
-  $("tempo").textContent = tempoDecorrido.toFixed(1);
-  $("pontos").textContent = pontos;
-  $("moedasPartida").textContent = moedasPartida;
-  $("nivel").textContent = Math.floor(tempoDecorrido / 15) + 1;
-
+function desenharJogadores(agora) {
   jogadores.forEach(j => {
-    const status = $("status" + j.id);
-    if (!status) return;
+    if (!j.vivo) return;
 
-    const ativos = [];
-    if (j.escudo > 0) ativos.push("🛡 " + j.escudo.toFixed(0) + "s");
-    if (j.velocidadeExtra > 0) ativos.push("⚡ " + j.velocidadeExtra.toFixed(0) + "s");
-    if (j.invencivel > 0) ativos.push("⭐ " + j.invencivel.toFixed(0) + "s");
+    ctx.save();
 
-    status.textContent =
-      (j.vivo ? "🟢" : "❌") + " Jogador " + j.id +
-      (ativos.length ? " | " + ativos.join(" ") : "");
+    ctx.shadowColor = j.cor;
+    ctx.shadowBlur = 18;
+
+    ctx.fillStyle = j.cor;
+    ctx.beginPath();
+    ctx.arc(j.x, j.y, j.raio, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    if (agora < j.escudoAte) {
+      ctx.strokeStyle = "#48a8ff";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, j.raio + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (agora < j.invencivelAte) {
+      ctx.strokeStyle = "#bd70ff";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, j.raio + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#f4f7ff";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(j.nome, j.x, j.y - 22);
+
+    ctx.restore();
   });
 }
 
-function gameOver() {
-  rodando = false;
-  encerrado = true;
-  pausado = false;
-  cancelAnimationFrame(animacao);
-  limparTeclas();
+function desenharTiros() {
+  tiros.forEach(t => {
+    ctx.save();
+    ctx.shadowColor = t.cor;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = t.cor;
 
-  let nome = "Jogador 1";
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.raio, 0, Math.PI * 2);
+    ctx.fill();
 
-  if (modo === 2) {
-    const sobrevivente = jogadores.find(j => j.vivo);
-    nome = sobrevivente ? "Jogador " + sobrevivente.id : "Empate";
+    ctx.restore();
+  });
+}
+
+function desenharOverlay() {
+  if (pausado) {
+    ctx.fillStyle = "#050813bb";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 36px Arial";
+    ctx.fillText("PAUSADO", W / 2, H / 2);
   }
+}
+
+// ======================================================
+// 16. LOOP PRINCIPAL
+// ======================================================
+
+function loop(agora) {
+  if (!rodando) return;
+
+  requestAnimationFrame(loop);
+
+  const dt = Math.min((agora - ultimoFrame) / 1000, 0.04);
+  ultimoFrame = agora;
+
+  if (pausado || gameOverFlag) {
+    desenharFundo();
+    desenharTiros();
+    desenharItens(agora);
+    desenharChefe();
+    desenharJogadores(agora);
+    desenharParticulas();
+    desenharOverlay();
+    return;
+  }
+
+  tempoJogo = (agora - inicioPartida) / 1000;
+
+  atualizarDificuldade();
+
+  const config = {
+    quantidadeBase: 2 + Math.floor((nivel - 1) / 2)
+  };
+
+  jogadores.forEach(j => moverJogador(j, dt, agora));
+
+  // Criação de tiros: mais tiros conforme o nível avança.
+  if (agora - ultimoTiro >= intervaloTiro * 1000) {
+    ultimoTiro = agora;
+
+    const alvo = jogadores.find(j => j.vivo && !j.remoto);
+
+    if (alvo) {
+      const quantidade = Math.min(config.quantidadeBase, 60);
+
+      for (let i = 0; i < quantidade; i++) {
+        criarTiroDaBorda(alvo);
+      }
+    }
+  }
+
+  // Itens aparecem periodicamente.
+  const intervaloItens = Math.max(2.5, 7 - nivel * 0.08);
+
+  if (agora - ultimoItem >= intervaloItens * 1000) {
+    ultimoItem = agora;
+    criarItem();
+  }
+
+  // Chefões aparecem a cada 5 níveis.
+  if (nivel % 5 === 0 && nivel !== ultimoChefe && !chefe) {
+    ultimoChefe = nivel;
+    criarChefe();
+  }
+
+  if (chefe) {
+    atualizarChefe(dt, agora);
+
+    // Sobreviver durante 15 segundos vence o chefão.
+    if (tempoJogo - (chefe.inicio || tempoJogo) > 15) {
+      chefe = null;
+      pontos += 100 + nivel * 10;
+      moedasPartida += 10;
+      criarParticulas(W / 2, 90, "#ffd166", 30);
+      gameMessageEl.textContent = "🏆 Chefão derrotado! +10 moedas";
+      gameMessageEl.classList.remove("hidden");
+      tocarSom(880, 0.25);
+    } else if (!chefe.inicio) {
+      chefe.inicio = tempoJogo;
+    }
+  }
+
+  tiros.forEach(t => {
+    t.x += t.vx * dt;
+    t.y += t.vy * dt;
+  });
+
+  atualizarParticulas(dt);
+  verificarColisoes(agora);
+  enviarPosicaoOnline(agora);
+
+  pontos = Math.floor(tempoJogo * 10) + (nivel - 1) * 25;
+
+  desenharFundo();
+  desenharItens(agora);
+  desenharTiros();
+  desenharChefe();
+  desenharJogadores(agora);
+  desenharParticulas();
+
+  atualizarHUD();
+
+  const jogadorLocal = jogadores.find(j => j.id === 1 && !j.remoto);
+
+  if (!jogadorLocal || !jogadorLocal.vivo) {
+    finalizarPartida();
+  }
+}
+
+// ======================================================
+// 17. FIM DE PARTIDA
+// ======================================================
+
+function finalizarPartida() {
+  if (gameOverFlag) return;
+
+  gameOverFlag = true;
+  rodando = false;
+
+  const moedasGanhas = Math.max(1, Math.floor(tempoJogo / 10)) +
+                       moedasPartida;
+
+  dados.coins += moedasGanhas;
+
+  const nome = playerNameInput.value.trim().slice(0, 16) ||
+               "Jogador";
 
   dados.ranking.push({
-    nome,
-    tempo: tempoDecorrido,
-    data: new Date().toLocaleDateString("pt-BR")
+    name: nome,
+    score: pontos,
+    date: new Date().toISOString()
   });
 
-  dados.ranking.sort((a, b) => b.tempo - a.tempo);
+  dados.ranking.sort((a, b) => b.score - a.score);
   dados.ranking = dados.ranking.slice(0, 10);
 
   salvarDados();
-  desenharRanking("rankingMenu");
+  atualizarRanking();
 
-  const mensagem = $("mensagem");
-  mensagem.replaceChildren();
+  gameMessageEl.innerHTML = "";
 
   const titulo = document.createElement("h2");
-  titulo.textContent = "💥 Fim de jogo!";
-  mensagem.appendChild(titulo);
+  titulo.textContent = "FIM DE JOGO";
 
-  const detalhes = document.createElement("p");
-  detalhes.textContent =
-    `Sobrevivência: ${tempoDecorrido.toFixed(1)}s | ` +
-    `Pontos: ${pontos} | Moedas ganhas: ${moedasPartida}`;
-  mensagem.appendChild(detalhes);
+  const resumo = document.createElement("p");
+  resumo.textContent =
+    `Você chegou ao nível ${nivel}, sobreviveu ${tempoJogo.toFixed(1)} segundos e fez ${pontos} pontos.`;
 
-  const resultado = document.createElement("p");
-  resultado.textContent = modo === 2
-    ? `Resultado: ${nome}`
-    : "Tenta bater o teu recorde!";
-  mensagem.appendChild(resultado);
+  const premio = document.createElement("p");
+  premio.textContent = `Você ganhou ${moedasGanhas} moedas!`;
 
-  const botao = document.createElement("button");
-  botao.className = "botao principal";
-  botao.textContent = "Jogar novamente";
-  botao.addEventListener("click", iniciarJogo);
-  mensagem.appendChild(botao);
+  const reiniciar = document.createElement("button");
+  reiniciar.className = "btn primary full";
+  reiniciar.textContent = "Jogar novamente";
+  reiniciar.addEventListener("click", iniciarPartida);
 
-  mensagem.classList.remove("escondido");
-  $("btnPausa").textContent = "⏸ Pausar";
+  const voltar = document.createElement("button");
+  voltar.className = "btn full";
+  voltar.textContent = "Voltar ao menu";
+  voltar.addEventListener("click", voltarMenu);
+
+  gameMessageEl.append(titulo, resumo, premio, reiniciar, voltar);
+  gameMessageEl.classList.remove("hidden");
+
+  tocarSom(180, 0.5, "sawtooth");
 }
+
+// ======================================================
+// 18. PAUSA, MENU E TELA CHEIA
+// ======================================================
 
 function alternarPausa() {
-  if (!rodando || encerrado) return;
+  if (!rodando || gameOverFlag) return;
 
   pausado = !pausado;
-  limparTeclas();
-
-  $("btnPausa").textContent = pausado ? "▶ Continuar" : "⏸ Pausar";
 
   if (!pausado) {
-    ultimoFrame = 0;
+    inicioPartida = performance.now() - tempoJogo * 1000;
   }
+
+  pauseBtn.textContent = pausado ? "▶ Continuar" : "⏸ Pausar";
+
+  if (pausado) limparTeclas();
 }
 
-function voltarMenu() {
+async function voltarMenu() {
   rodando = false;
   pausado = false;
-  encerrado = true;
+  gameOverFlag = false;
 
-  cancelAnimationFrame(animacao);
   limparTeclas();
-  desenharRanking("rankingMenu");
-  mostrar("menu");
+  await sairDaSala();
+
+  game.classList.add("hidden");
+  shop.classList.add("hidden");
+  menu.classList.remove("hidden");
+
+  gameMessageEl.classList.add("hidden");
+  onlineStatusEl.textContent = db
+    ? "Firebase configurado."
+    : "Modo solo disponível. Configure o Firebase para jogar online.";
 }
 
-function abrirLoja() {
-  renderizarLoja();
-  mostrar("loja");
-}
-
-function renderizarLoja() {
-  const container = $("itensLoja");
-  container.replaceChildren();
-  $("saldoLoja").textContent = dados.moedas;
-
-  cores.forEach((skin, index) => {
-    const desbloqueada = dados.desbloqueadas.includes(index);
-    const selecionada = dados.skin1 === index;
-
-    const card = document.createElement("div");
-    card.className = "skin";
-
-    const amostra = document.createElement("div");
-    amostra.className = "amostra";
-    amostra.style.background = skin.cor;
-    amostra.style.color = skin.cor;
-    card.appendChild(amostra);
-
-    const nome = document.createElement("h3");
-    nome.textContent = skin.nome;
-    card.appendChild(nome);
-
-    const preco = document.createElement("p");
-    preco.textContent = skin.preco === 0 ? "Grátis" : `🪙 ${skin.preco}`;
-    card.appendChild(preco);
-
-    const botao = document.createElement("button");
-
-    if (desbloqueada) {
-      botao.textContent = selecionada ? "Selecionada" : "Usar skin";
-      botao.disabled = selecionada;
-
-      botao.addEventListener("click", () => {
-        dados.skin1 = index;
-        salvarDados();
-        renderizarLoja();
-      });
-    } else {
-      botao.textContent = "Comprar";
-      botao.disabled = dados.moedas < skin.preco;
-
-      botao.addEventListener("click", () => {
-        if (dados.moedas < skin.preco) return;
-
-        dados.moedas -= skin.preco;
-        dados.desbloqueadas.push(index);
-        dados.skin1 = index;
-
-        salvarDados();
-        renderizarLoja();
-        som(750, 0.15, "triangle");
-      });
-    }
-
-    card.appendChild(botao);
-    container.appendChild(card);
+function limparTeclas() {
+  Object.keys(teclas).forEach(k => {
+    teclas[k] = false;
   });
 }
 
@@ -863,98 +1245,136 @@ async function alternarTelaCheia() {
   try {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
-      telaCheia = true;
     } else {
       await document.exitFullscreen();
-      telaCheia = false;
     }
-  } catch {
-    mostrarMensagem(
-      "O teu navegador não permitiu ativar a tela cheia. Podes continuar a jogar normalmente."
-    );
+  } catch (error) {
+    console.warn("Tela cheia não disponível.", error);
   }
-
-  $("btnTelaCheia").textContent =
-    document.fullscreenElement ? "⛶ Sair da tela cheia" : "⛶ Tela cheia";
 }
 
-$("btnJogar").addEventListener("click", iniciarJogo);
-$("btnLoja").addEventListener("click", abrirLoja);
-$("btnVoltar").addEventListener("click", () => mostrar("menu"));
-$("btnPausa").addEventListener("click", alternarPausa);
-$("btnMenu").addEventListener("click", voltarMenu);
-$("btnTelaCheia").addEventListener("click", alternarTelaCheia);
+// ======================================================
+// 19. CONTROLES DE TECLADO
+// ======================================================
 
-$("btnSom").addEventListener("click", () => {
-  somLigado = !somLigado;
-  $("btnSom").textContent = somLigado
-    ? "🔊 Som ligado"
-    : "🔇 Som desligado";
+window.addEventListener("keydown", event => {
+  const tecla = event.key.length === 1
+    ? event.key.toLowerCase()
+    : event.key;
 
-  if (somLigado) som(500, 0.08);
-});
-
-document.addEventListener("fullscreenchange", () => {
-  $("btnTelaCheia").textContent =
-    document.fullscreenElement ? "⛶ Sair da tela cheia" : "⛶ Tela cheia";
-});
-
-window.addEventListener("keydown", e => {
-  const teclasJogo = [
+  if ([
     "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "
-  ];
+  ].includes(event.key)) {
+    event.preventDefault();
+  }
 
-  if (teclasJogo.includes(e.key)) e.preventDefault();
-
-  const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   teclas[tecla] = true;
 
-  if (tecla === "p" && !e.repeat) {
+  if (event.repeat) return;
+
+  if (event.key.toLowerCase() === "p" ||
+      event.key === "Escape") {
     alternarPausa();
   }
 });
 
-window.addEventListener("keyup", e => {
-  const tecla = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+window.addEventListener("keyup", event => {
+  const tecla = event.key.length === 1
+    ? event.key.toLowerCase()
+    : event.key;
+
   teclas[tecla] = false;
 });
 
 window.addEventListener("blur", limparTeclas);
 
-document.querySelectorAll(".controle[data-key]").forEach(botao => {
-  const tecla = botao.dataset.key;
-
-  function soltar() {
-    teclas[tecla] = false;
-    botao.classList.remove("pressionado");
-  }
-
-  botao.addEventListener("pointerdown", e => {
-    e.preventDefault();
-
-    if (!rodando || pausado || encerrado) return;
-
-    try {
-      botao.setPointerCapture(e.pointerId);
-    } catch {}
-
-    teclas[tecla] = true;
-    botao.classList.add("pressionado");
-  });
-
-  botao.addEventListener("pointerup", soltar);
-  botao.addEventListener("pointercancel", soltar);
-  botao.addEventListener("lostpointercapture", soltar);
-  botao.addEventListener("contextmenu", e => e.preventDefault());
-});
-
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && rodando && !encerrado && !pausado) {
+  if (document.hidden && rodando && !pausado && !gameOverFlag) {
     alternarPausa();
   }
 });
 
+// ======================================================
+// 20. CONTROLES DE TOQUE
+// ======================================================
+
+document.querySelectorAll("[data-key]").forEach(botao => {
+  const tecla = botao.dataset.key;
+
+  const pressionar = event => {
+    event.preventDefault();
+    teclas[tecla] = true;
+
+    try {
+      botao.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Captura não disponível.
+    }
+  };
+
+  const soltar = event => {
+    event.preventDefault();
+    teclas[tecla] = false;
+  };
+
+  botao.addEventListener("pointerdown", pressionar);
+  botao.addEventListener("pointerup", soltar);
+  botao.addEventListener("pointercancel", soltar);
+  botao.addEventListener("lostpointercapture", soltar);
+});
+
+// ======================================================
+// 21. MENU E BOTÕES
+// ======================================================
+
+modeSelect.addEventListener("change", () => {
+  const online = modeSelect.value !== "solo";
+
+  nameBox.classList.remove("hidden");
+  joinBox.classList.toggle("hidden", modeSelect.value !== "join");
+
+  startBtn.textContent = modeSelect.value === "create"
+    ? "🌐 CRIAR SALA"
+    : modeSelect.value === "join"
+      ? "🔗 ENTRAR NA SALA"
+      : "▶ JOGAR";
+
+  onlineStatusEl.textContent = online
+    ? "O modo online exige uma configuração válida do Firebase."
+    : "Modo solo disponível.";
+});
+
+startBtn.addEventListener("click", iniciarPartida);
+
+shopBtn.addEventListener("click", abrirLoja);
+
+backBtn.addEventListener("click", () => {
+  shop.classList.add("hidden");
+  menu.classList.remove("hidden");
+});
+
+pauseBtn.addEventListener("click", alternarPausa);
+
+soundBtn.addEventListener("click", () => {
+  somLigado = !somLigado;
+  soundBtn.textContent = somLigado ? "🔊 Som ligado" : "🔇 Som desligado";
+
+  if (somLigado) tocarSom(600);
+});
+
+fullBtn.addEventListener("click", alternarTelaCheia);
+
+menuBtn.addEventListener("click", voltarMenu);
+
+// ======================================================
+// 22. AJUSTES INICIAIS
+// ======================================================
+
+joinBox.classList.add("hidden");
+
+onlineStatusEl.textContent = db
+  ? "Firebase configurado. O modo online pode ser utilizado."
+  : "Modo solo disponível. Configure o Firebase para jogar online.";
+
 atualizarMoedas();
-desenharRanking("rankingMenu");
-mostrar("menu");
-desenhar();
+atualizarRanking();
