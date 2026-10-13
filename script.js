@@ -1,10 +1,6 @@
 
 "use strict";
 
-// ========================================
-// DESVIE DOS TIROS - SCRIPT PRINCIPAL
-// ========================================
-
 const $ = (id) => document.getElementById(id);
 
 const menu = $("menu");
@@ -24,8 +20,10 @@ const gameMessage = $("gameMessage");
 const shopCoins = $("shopCoins");
 const shopItems = $("shopItems");
 
-const WIDTH = canvas.width = 960;
-const HEIGHT = canvas.height = 540;
+const WIDTH = 960;
+const HEIGHT = 540;
+canvas.width = WIDTH;
+canvas.height = HEIGHT;
 
 const STORAGE = {
   coins: "desvieCoins",
@@ -44,38 +42,14 @@ const SKINS = [
   { id: "white", name: "Branco gelo", color: "#f8fafc", price: 400 }
 ];
 
-let coins = readNumber(STORAGE.coins, 0);
-let ownedSkins = readJSON(STORAGE.owned, ["blue"]);
-let currentSkin = localStorage.getItem(STORAGE.skin) || "blue";
-let soundEnabled = localStorage.getItem(STORAGE.sound) !== "false";
-
-let running = false;
-let paused = false;
-let animationId = null;
-let lastFrame = 0;
-let elapsed = 0;
-let score = 0;
-let earned = 0;
-let level = 1;
-let spawnTimer = 0;
-let shotTimer = 0;
-let enemyBullets = [];
-let particles = [];
-let keys = new Set();
-let player = null;
-let difficulty = "normal";
-let playerName = "Jogador";
-let previousTime = 0;
-let gameEnded = false;
-
 function readNumber(key, fallback) {
-  const value = Number(localStorage.getItem(key));
-  return Number.isFinite(value) && localStorage.getItem(key) !== null
-    ? value
-    : fallback;
+  const value = localStorage.getItem(key);
+  if (value === null) return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
-function readJSON(key, fallback) {
+function readArray(key, fallback) {
   try {
     const value = JSON.parse(localStorage.getItem(key));
     return Array.isArray(value) ? value : fallback;
@@ -83,6 +57,30 @@ function readJSON(key, fallback) {
     return fallback;
   }
 }
+
+let coins = readNumber(STORAGE.coins, 0);
+let ownedSkins = readArray(STORAGE.owned, ["blue"]);
+let currentSkin = localStorage.getItem(STORAGE.skin) || "blue";
+let soundEnabled = localStorage.getItem(STORAGE.sound) !== "false";
+
+if (!ownedSkins.includes("blue")) ownedSkins.push("blue");
+
+let running = false;
+let paused = false;
+let gameEnded = false;
+let animationId = 0;
+let lastFrame = 0;
+let elapsed = 0;
+let score = 0;
+let earned = 0;
+let level = 1;
+let spawnTimer = 0;
+let previousSecond = 0;
+let bullets = [];
+let keys = new Set();
+let player;
+let difficulty = "normal";
+let playerName = "Jogador";
 
 function saveProgress() {
   localStorage.setItem(STORAGE.coins, String(coins));
@@ -97,67 +95,20 @@ function updateCoins() {
 }
 
 function showScreen(screen) {
+  menu.classList.remove("active");
+  game.classList.remove("active");
+  shop.classList.remove("active");
+
   menu.classList.add("hidden");
   game.classList.add("hidden");
   shop.classList.add("hidden");
+
   screen.classList.remove("hidden");
+  screen.classList.add("active");
 }
 
 function getSkin() {
   return SKINS.find((skin) => skin.id === currentSkin) || SKINS[0];
-}
-
-function createPlayer() {
-  return {
-    x: WIDTH / 2,
-    y: HEIGHT - 75,
-    radius: 17,
-    speed: 330,
-    color: getSkin().color,
-    invulnerable: 0
-  };
-}
-
-function startGame() {
-  if (running) {
-    stopGame();
-  }
-
-  playerName = playerNameInput.value.trim().slice(0, 20) || "Jogador";
-  difficulty = difficultySelect.value || "normal";
-
-  score = 0;
-  earned = 0;
-  level = 1;
-  elapsed = 0;
-  spawnTimer = 0;
-  shotTimer = 0;
-  enemyBullets = [];
-  particles = [];
-  keys.clear();
-  player = createPlayer();
-
-  paused = false;
-  running = true;
-  gameEnded = false;
-  lastFrame = 0;
-
-  $("pauseBtn").textContent = "Pausar";
-  $("soundBtn").textContent = soundEnabled ? "Som: ligado" : "Som: desligado";
-  gameMessage.classList.add("hidden");
-
-  updateHUD();
-  showScreen(game);
-
-  cancelAnimationFrame(animationId);
-  animationId = requestAnimationFrame(loop);
-}
-
-function stopGame() {
-  running = false;
-  paused = false;
-  cancelAnimationFrame(animationId);
-  keys.clear();
 }
 
 function updateHUD() {
@@ -168,150 +119,163 @@ function updateHUD() {
   updateCoins();
 }
 
+function createPlayer() {
+  return {
+    x: WIDTH / 2,
+    y: HEIGHT - 75,
+    radius: 17,
+    speed: 320,
+    color: getSkin().color
+  };
+}
+
+function startGame() {
+  cancelAnimationFrame(animationId);
+
+  playerName = playerNameInput.value.trim().slice(0, 16) || "Jogador";
+  difficulty = difficultySelect.value || "normal";
+
+  elapsed = 0;
+  score = 0;
+  earned = 0;
+  level = 1;
+  spawnTimer = 0;
+  previousSecond = 0;
+  bullets = [];
+  keys.clear();
+  player = createPlayer();
+
+  running = true;
+  paused = false;
+  gameEnded = false;
+  lastFrame = 0;
+
+  $("pauseBtn").textContent = "PAUSAR";
+  $("soundBtn").textContent = soundEnabled ? "SOM: LIGADO" : "SOM: DESLIGADO";
+
+  gameMessage.classList.add("hidden");
+  gameMessage.innerHTML = "";
+
+  showScreen(game);
+  updateHUD();
+
+  animationId = requestAnimationFrame(loop);
+}
+
+function stopGame() {
+  running = false;
+  paused = false;
+  cancelAnimationFrame(animationId);
+  keys.clear();
+}
+
 function loop(timestamp) {
   if (!running) return;
 
-  if (!lastFrame) lastFrame = timestamp;
-  const delta = Math.min((timestamp - lastFrame) / 1000, 0.035);
+  const delta = lastFrame
+    ? Math.min((timestamp - lastFrame) / 1000, 0.04)
+    : 0;
+
   lastFrame = timestamp;
 
-  if (!paused) {
-    update(delta);
-  }
-
+  if (!paused) update(delta);
   draw();
 
-  if (running) {
-    animationId = requestAnimationFrame(loop);
-  }
+  if (running) animationId = requestAnimationFrame(loop);
 }
 
 function update(delta) {
   elapsed += delta;
   level = 1 + Math.floor(elapsed / 15);
 
-  const playerSpeed = player.speed * delta;
   let dx = 0;
   let dy = 0;
 
-  if (keys.has("ArrowLeft") || keys.has("a")) dx -= 1;
-  if (keys.has("ArrowRight") || keys.has("d")) dx += 1;
-  if (keys.has("ArrowUp") || keys.has("w")) dy -= 1;
-  if (keys.has("ArrowDown") || keys.has("s")) dy += 1;
+  if (keys.has("ArrowLeft") || keys.has("a")) dx--;
+  if (keys.has("ArrowRight") || keys.has("d")) dx++;
+  if (keys.has("ArrowUp") || keys.has("w")) dy--;
+  if (keys.has("ArrowDown") || keys.has("s")) dy++;
 
-  if (dx && dy) {
+  if (dx !== 0 && dy !== 0) {
     dx *= Math.SQRT1_2;
     dy *= Math.SQRT1_2;
   }
 
-  player.x += dx * playerSpeed;
-  player.y += dy * playerSpeed;
+  player.x += dx * player.speed * delta;
+  player.y += dy * player.speed * delta;
 
   player.x = clamp(player.x, player.radius, WIDTH - player.radius);
   player.y = clamp(player.y, player.radius, HEIGHT - player.radius);
 
-  player.invulnerable = Math.max(0, player.invulnerable - delta);
-
-  const spawnRates = {
-    easy: 0.85,
-    normal: 0.58,
-    hard: 0.36
-  };
-
-  spawnTimer += delta;
-  const spawnRate = Math.max(
-    0.18,
-    spawnRates[difficulty] / (1 + (level - 1) * 0.12)
-  );
-
-  if (spawnTimer >= spawnRate) {
-    spawnTimer = 0;
-    spawnEnemy();
+  const currentSecond = Math.floor(elapsed);
+  if (currentSecond > previousSecond) {
+    score += (currentSecond - previousSecond) * 10;
+    previousSecond = currentSecond;
   }
 
-  for (const bullet of enemyBullets) {
+  const rates = { easy: 0.95, normal: 0.65, hard: 0.4 };
+  spawnTimer += delta;
+
+  if (spawnTimer >= Math.max(0.22, rates[difficulty] / (1 + (level - 1) * 0.1))) {
+    spawnTimer = 0;
+    spawnBullet();
+  }
+
+  for (const bullet of bullets) {
     bullet.x += bullet.vx * delta;
     bullet.y += bullet.vy * delta;
-    bullet.rotation += delta * 3;
+    bullet.rotation += delta * 4;
   }
 
-  enemyBullets = enemyBullets.filter(
-    (bullet) =>
-      bullet.x > -40 &&
-      bullet.x < WIDTH + 40 &&
-      bullet.y > -40 &&
-      bullet.y < HEIGHT + 40
+  bullets = bullets.filter(
+    (b) => b.x > -30 && b.x < WIDTH + 30 && b.y > -30 && b.y < HEIGHT + 30
   );
 
-  shotTimer += delta;
-
-  // Pequena recompensa por sobreviver.
-  if (Math.floor(elapsed) > Math.floor(previousTime)) {
-    score += 10;
-    previousTime = elapsed;
-  }
-
-  // Pontuação por tempo sobrevivido.
-  if (Math.floor(elapsed) > 0 && Math.floor(elapsed) % 10 === 0) {
-    // A pontuação principal é atualizada por segundo acima.
-  }
-
-  updateParticles(delta);
   checkCollisions();
   updateHUD();
 }
 
-function spawnEnemy() {
-  const edge = Math.floor(Math.random() * 3);
-  let x;
-  let y;
+function spawnBullet() {
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
 
-  if (edge === 0) {
+  if (side === 0) {
     x = Math.random() * WIDTH;
-    y = -20;
-  } else if (edge === 1) {
+    y = -10;
+  } else if (side === 1) {
     x = Math.random() * WIDTH;
-    y = HEIGHT + 20;
+    y = HEIGHT + 10;
+  } else if (side === 2) {
+    x = -10;
+    y = Math.random() * HEIGHT;
   } else {
-    x = Math.random() < 0.5 ? -20 : WIDTH + 20;
+    x = WIDTH + 10;
     y = Math.random() * HEIGHT;
   }
 
   const angle = Math.atan2(player.y - y, player.x - x);
-  const baseSpeed = {
-    easy: 100,
-    normal: 145,
-    hard: 190
-  }[difficulty];
-
+  const baseSpeed = { easy: 115, normal: 160, hard: 210 }[difficulty];
   const speed = baseSpeed + level * 5;
+  const direction = Math.random() < 0.8
+    ? angle
+    : Math.random() * Math.PI * 2;
 
-  const aim = Math.random() < 0.72;
-  const direction = aim ? angle : Math.random() * Math.PI * 2;
-
-  const bullet = {
+  bullets.push({
     x,
     y,
     radius: 8,
     vx: Math.cos(direction) * speed,
     vy: Math.sin(direction) * speed,
-    rotation: 0,
-    color: Math.random() < 0.5 ? "#fb4141" : "#fb923c"
-  };
-
-  enemyBullets.push(bullet);
+    rotation: 0
+  });
 }
 
 function checkCollisions() {
-  if (!player || player.invulnerable > 0) return;
-
-  for (const bullet of enemyBullets) {
-    const distance = Math.hypot(
-      bullet.x - player.x,
-      bullet.y - player.y
-    );
-
-    if (distance < bullet.radius + player.radius * 0.75) {
+  for (const bullet of bullets) {
+    if (
+      Math.hypot(bullet.x - player.x, bullet.y - player.y) <
+      bullet.radius + player.radius * 0.75
+    ) {
       endGame();
       return;
     }
@@ -323,26 +287,23 @@ function endGame() {
 
   gameEnded = true;
   running = false;
-  paused = false;
   cancelAnimationFrame(animationId);
 
-  const bonus = Math.max(0, Math.floor(score / 20));
-  earned += bonus;
+  earned = Math.floor(score / 20) + Math.floor(elapsed / 5);
   coins += earned;
 
   saveProgress();
-  updateCoins();
   updateHUD();
   saveRanking();
 
-  $("gameMessage").innerHTML = `
-    <h2>Fim de jogo!</h2>
+  gameMessage.innerHTML = `
+    <h2>FIM DE JOGO!</h2>
     <p>Jogador: ${escapeHTML(playerName)}</p>
     <p>Pontuação: <strong>${Math.floor(score)}</strong></p>
-    <p>Tempo sobrevivido: <strong>${elapsed.toFixed(1)}s</strong></p>
-    <p>Moedas ganhas nesta partida: <strong>${earned}</strong></p>
-    <button id="restartBtn" class="primary-button">Jogar novamente</button>
-    <button id="endMenuBtn" class="secondary-button">Voltar ao menu</button>
+    <p>Tempo: <strong>${elapsed.toFixed(1)}s</strong></p>
+    <p>Moedas ganhas: <strong>${earned}</strong></p>
+    <button id="restartBtn" class="primary">JOGAR NOVAMENTE</button>
+    <button id="endMenuBtn" class="secondary">VOLTAR AO MENU</button>
   `;
 
   gameMessage.classList.remove("hidden");
@@ -351,8 +312,18 @@ function endGame() {
   $("endMenuBtn").addEventListener("click", returnToMenu);
 }
 
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
 function saveRanking() {
-  const ranking = readJSON(STORAGE.ranking, []);
+  const ranking = readArray(STORAGE.ranking, []);
 
   ranking.push({
     name: playerName,
@@ -366,55 +337,35 @@ function saveRanking() {
 }
 
 function renderRanking() {
-  const container = $("ranking");
-  const ranking = readJSON(STORAGE.ranking, []);
+  const ranking = readArray(STORAGE.ranking, []);
 
-  container.innerHTML = `
-    <h2>Ranking local</h2>
-    <ol class="ranking-list">
-      ${
-        ranking.length
-          ? ranking.map((item) => `
-            <li>
-              <span>${escapeHTML(item.name)}</span>
-              <strong>${item.score} pts</strong>
-            </li>
-          `).join("")
-          : "<li>Ainda não há partidas registradas.</li>"
-      }
-    </ol>
-  `;
-}
-
-function escapeHTML(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[char]);
+  $("ranking").innerHTML = ranking.length
+    ? ranking.map((item) => `
+        <li>
+          <span>${escapeHTML(item.name)}</span>
+          <strong>${item.score} pts</strong>
+        </li>
+      `).join("")
+    : "<li>Jogue para registrar sua pontuação.</li>";
 }
 
 function returnToMenu() {
   stopGame();
   gameMessage.classList.add("hidden");
   showScreen(menu);
-  renderRanking();
-  updateCoins();
 }
 
 function togglePause() {
   if (!running || gameEnded) return;
 
   paused = !paused;
-  $("pauseBtn").textContent = paused ? "Continuar" : "Pausar";
+  $("pauseBtn").textContent = paused ? "CONTINUAR" : "PAUSAR";
 }
 
 function toggleSound() {
   soundEnabled = !soundEnabled;
   localStorage.setItem(STORAGE.sound, String(soundEnabled));
-  $("soundBtn").textContent = soundEnabled ? "Som: ligado" : "Som: desligado";
+  $("soundBtn").textContent = soundEnabled ? "SOM: LIGADO" : "SOM: DESLIGADO";
 }
 
 function openShop() {
@@ -429,14 +380,11 @@ function renderShop() {
     const owned = ownedSkins.includes(skin.id);
     const selected = currentSkin === skin.id;
 
-    let buttonText;
-    if (selected) {
-      buttonText = "Equipado";
-    } else if (owned) {
-      buttonText = "Equipar";
-    } else {
-      buttonText = `Comprar — ${skin.price} moedas`;
-    }
+    const text = selected
+      ? "EQUIPADA"
+      : owned
+        ? "EQUIPAR"
+        : `COMPRAR — ${skin.price} MOEDAS`;
 
     return `
       <article class="shop-item ${selected ? "selected" : ""}">
@@ -445,66 +393,48 @@ function renderShop() {
           height: 44px;
           border-radius: 50%;
           background: ${skin.color};
-          box-shadow: 0 0 20px ${skin.color}66;
+          box-shadow: 0 0 18px ${skin.color}66;
         "></div>
         <h3>${escapeHTML(skin.name)}</h3>
         <p>${owned ? "Skin desbloqueada" : "Personalize seu jogador."}</p>
-        <button
-          class="${selected ? "secondary-button" : "primary-button"}"
-          data-skin="${skin.id}"
-          ${selected ? "disabled" : ""}
-        >${buttonText}</button>
+        <button class="${selected ? "secondary" : "primary"}"
+          data-skin="${skin.id}" ${selected ? "disabled" : ""}>
+          ${text}
+        </button>
       </article>
     `;
   }).join("");
 
   shopItems.querySelectorAll("[data-skin]").forEach((button) => {
     button.addEventListener("click", () => {
-      buyOrEquipSkin(button.dataset.skin);
+      const skin = SKINS.find((item) => item.id === button.dataset.skin);
+      if (!skin) return;
+
+      if (!ownedSkins.includes(skin.id)) {
+        if (coins < skin.price) {
+          alert("Você não tem moedas suficientes.");
+          return;
+        }
+
+        coins -= skin.price;
+        ownedSkins.push(skin.id);
+      }
+
+      currentSkin = skin.id;
+      saveProgress();
+      updateCoins();
+      renderShop();
     });
   });
-}
-
-function buyOrEquipSkin(id) {
-  const skin = SKINS.find((item) => item.id === id);
-  if (!skin) return;
-
-  if (ownedSkins.includes(id)) {
-    currentSkin = id;
-    saveProgress();
-    renderShop();
-    return;
-  }
-
-  if (coins < skin.price) {
-    alert("Você não tem moedas suficientes para comprar esta skin.");
-    return;
-  }
-
-  coins -= skin.price;
-  ownedSkins.push(id);
-  currentSkin = id;
-
-  saveProgress();
-  updateCoins();
-  renderShop();
 }
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function updateParticles(delta) {
-  for (const particle of particles) {
-    particle.x += particle.vx * delta;
-    particle.y += particle.vy * delta;
-    particle.life -= delta;
-  }
+function draw() {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-  particles = particles.filter((particle) => particle.life > 0);
-}
-
-function drawBackground() {
   ctx.fillStyle = "#050914";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
@@ -525,97 +455,42 @@ function drawBackground() {
     ctx.stroke();
   }
 
-  // Pontos decorativos.
-  ctx.fillStyle = "#64748b";
-
-  for (let i = 0; i < 35; i++) {
-    const x = (i * 173) % WIDTH;
-    const y = (i * 97) % HEIGHT;
-
-    ctx.globalAlpha = 0.2 + ((i % 3) * 0.15);
-    ctx.fillRect(x, y, 2, 2);
-  }
-
-  ctx.globalAlpha = 1;
-}
-
-function drawPlayer() {
-  if (!player) return;
-
-  if (player.invulnerable > 0 && Math.floor(performance.now() / 100) % 2 === 0) {
-    return;
-  }
-
-  ctx.save();
-  ctx.translate(player.x, player.y);
-
-  ctx.shadowColor = player.color;
-  ctx.shadowBlur = 22;
-  ctx.fillStyle = player.color;
-
-  ctx.beginPath();
-  ctx.moveTo(0, -player.radius - 5);
-  ctx.lineTo(player.radius, player.radius);
-  ctx.lineTo(0, player.radius * 0.55);
-  ctx.lineTo(-player.radius, player.radius);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#ffffff";
-
-  ctx.beginPath();
-  ctx.arc(0, 2, 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawBullets() {
-  for (const bullet of enemyBullets) {
+  for (const bullet of bullets) {
     ctx.save();
     ctx.translate(bullet.x, bullet.y);
     ctx.rotate(bullet.rotation);
-
-    ctx.shadowColor = bullet.color;
+    ctx.shadowColor = "#fb4141";
     ctx.shadowBlur = 18;
-    ctx.fillStyle = bullet.color;
+    ctx.fillStyle = "#fb4141";
 
     ctx.beginPath();
     ctx.arc(0, 0, bullet.radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "#ffffff";
+    ctx.restore();
+  }
+
+  if (player) {
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = player.color;
 
     ctx.beginPath();
-    ctx.arc(-2, -2, 2.5, 0, Math.PI * 2);
+    ctx.moveTo(0, -player.radius - 5);
+    ctx.lineTo(player.radius, player.radius);
+    ctx.lineTo(0, player.radius * 0.55);
+    ctx.lineTo(-player.radius, player.radius);
+    ctx.closePath();
     ctx.fill();
 
     ctx.restore();
   }
-}
-
-function drawParticles() {
-  for (const particle of particles) {
-    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
-    ctx.fillStyle = particle.color;
-    ctx.fillRect(particle.x, particle.y, 3, 3);
-  }
-
-  ctx.globalAlpha = 1;
-}
-
-function draw() {
-  drawBackground();
-  drawBullets();
-  drawParticles();
-  drawPlayer();
 
   if (paused && running) {
-    ctx.fillStyle = "#020617bb";
+    ctx.fillStyle = "#020617cc";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 42px Arial";
     ctx.textAlign = "center";
@@ -623,26 +498,15 @@ function draw() {
   }
 }
 
-// ========================================
-// CONTROLES
-// ========================================
-
+// Controles do teclado.
 document.addEventListener("keydown", (event) => {
   const key = event.key.length === 1
     ? event.key.toLowerCase()
     : event.key;
 
-  if ([
-    "ArrowLeft",
-    "ArrowRight",
-    "ArrowUp",
-    "ArrowDown",
-    " "
-  ].includes(event.key)) {
-    event.preventDefault();
-  }
+  if (key.startsWith("Arrow") || key === " ") event.preventDefault();
 
-  if (key === "Escape" && running) {
+  if (key === "Escape") {
     togglePause();
     return;
   }
@@ -658,10 +522,9 @@ document.addEventListener("keyup", (event) => {
   keys.delete(key);
 });
 
-window.addEventListener("blur", () => {
-  keys.clear();
-});
+window.addEventListener("blur", () => keys.clear());
 
+// Controles de toque.
 document.querySelectorAll("[data-key]").forEach((button) => {
   const key = button.dataset.key;
 
@@ -679,13 +542,9 @@ document.querySelectorAll("[data-key]").forEach((button) => {
   button.addEventListener("pointerup", release);
   button.addEventListener("pointercancel", release);
   button.addEventListener("pointerleave", release);
-  button.addEventListener("contextmenu", (event) => event.preventDefault());
 });
 
-// ========================================
-// BOTÕES DA INTERFACE
-// ========================================
-
+// Botões da interface.
 $("startBtn").addEventListener("click", startGame);
 $("shopBtn").addEventListener("click", openShop);
 $("backBtn").addEventListener("click", () => showScreen(menu));
@@ -693,10 +552,7 @@ $("pauseBtn").addEventListener("click", togglePause);
 $("soundBtn").addEventListener("click", toggleSound);
 $("menuBtn").addEventListener("click", returnToMenu);
 
-// ========================================
-// INICIALIZAÇÃO
-// ========================================
-
+// Inicialização.
 updateCoins();
 renderRanking();
 showScreen(menu);
