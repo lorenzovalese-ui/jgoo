@@ -1,1432 +1,702 @@
+
 "use strict";
 
-// ======================================================
-// DESVIE DOS TIROS — SCRIPT COMPLETO
-// ======================================================
+// ========================================
+// DESVIE DOS TIROS - SCRIPT PRINCIPAL
+// ========================================
 
-// 1. CONFIGURAÇÃO DO FIREBASE
-// Preencha com os dados reais do seu projeto.
-
-const firebaseConfig = {
-  apiKey: "SUA_API_KEY_REAL",
-  authDomain: "desvie-dos-tiros.firebaseapp.com",
-  databaseURL: "https://desvie-dos-tiros-default-rtdb.firebaseio.com",
-  projectId: "desvie-dos-tiros",
-  appId: "SEU_APP_ID_REAL"
-};
-
-let db = null;
-let jogadorOnlineId = null;
-let salaRef = null;
-let salaCodigo = null;
-let modoOnline = false;
-let souAnfitriao = false;
-let ouvintesSala = [];
-
-try {
-  if (
-    firebaseConfig.apiKey &&
-    firebaseConfig.apiKey !== "SUA_API_KEY_REAL" &&
-    firebaseConfig.projectId === "desvie-dos-tiros"
-  ) {
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
-
-    firebase.auth().signInAnonymously()
-      .then(cred => {
-        jogadorOnlineId = cred.user.uid;
-        console.log("Firebase conectado!", jogadorOnlineId);
-      })
-      .catch(error => {
-        console.error("Erro de autenticação Firebase:", error);
-      });
-  }
-} catch (error) {
-  console.warn("Firebase ainda não configurado.", error);
-}
-
-// ======================================================
-// 2. ELEMENTOS HTML
-// ======================================================
-
-const $ = id => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 
 const menu = $("menu");
 const game = $("game");
 const shop = $("shop");
-const arena = $("arena");
-const ctx = arena.getContext("2d");
+const canvas = $("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-const modeSelect = $("mode");
-const difficultySelect = $("difficulty");
+const coinsElement = $("coins");
 const playerNameInput = $("playerName");
-const roomCodeInput = $("roomCode");
+const difficultySelect = $("difficulty");
+const scoreElement = $("score");
+const levelElement = $("level");
+const timeElement = $("time");
+const earnedElement = $("earned");
+const gameMessage = $("gameMessage");
+const shopCoins = $("shopCoins");
+const shopItems = $("shopItems");
 
-const startBtn = $("startBtn");
-const shopBtn = $("shopBtn");
-const backBtn = $("backBtn");
-const pauseBtn = $("pauseBtn");
-const soundBtn = $("soundBtn");
-const fullBtn = $("fullBtn");
-const menuBtn = $("menuBtn");
+const WIDTH = canvas.width = 960;
+const HEIGHT = canvas.height = 540;
 
-const coinsEl = $("coins");
-const shopCoinsEl = $("shopCoins");
-const timeEl = $("time");
-const scoreEl = $("score");
-const levelEl = $("level");
-const earnedEl = $("earned");
-const playersCountEl = $("playersCount");
+const STORAGE = {
+  coins: "desvieCoins",
+  ranking: "desvieRanking",
+  skin: "desvieSkin",
+  owned: "desvieOwnedSkins",
+  sound: "desvieSound"
+};
 
-const rankingEl = $("ranking");
-const onlineStatusEl = $("onlineStatus");
-const roomInfoEl = $("roomInfo");
-const gameMessageEl = $("gameMessage");
-
-const nameBox = $("nameBox");
-const joinBox = $("joinBox");
-
-// ======================================================
-// 3. SALVAMENTO LOCAL
-// ======================================================
-
-const STORAGE_KEY = "desvieDados";
-
-function carregarDados() {
-  try {
-    const dadosSalvos = JSON.parse(
-      localStorage.getItem(STORAGE_KEY)
-    );
-
-    if (dadosSalvos && typeof dadosSalvos === "object") {
-      return {
-        coins: Number(dadosSalvos.coins) || 0,
-        skins: Array.isArray(dadosSalvos.skins)
-          ? dadosSalvos.skins
-          : ["blue"],
-        skin: dadosSalvos.skin || "blue",
-        ranking: Array.isArray(dadosSalvos.ranking)
-          ? dadosSalvos.ranking
-          : []
-      };
-    }
-  } catch (error) {
-    console.warn("Não foi possível ler os dados salvos.");
-  }
-
-  return {
-    coins: 0,
-    skins: ["blue"],
-    skin: "blue",
-    ranking: []
-  };
-}
-
-let dados = carregarDados();
-
-function salvarDados() {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(dados)
-    );
-  } catch (error) {
-    console.warn("Não foi possível salvar os dados.");
-  }
-
-  atualizarMoedas();
-}
-
-function atualizarMoedas() {
-  coinsEl.textContent = dados.coins;
-  shopCoinsEl.textContent = dados.coins;
-}
-
-function atualizarRanking() {
-  rankingEl.innerHTML = "";
-
-  if (!dados.ranking.length) {
-    const li = document.createElement("li");
-    li.textContent = "Nenhuma partida registrada ainda.";
-    rankingEl.appendChild(li);
-    return;
-  }
-
-  dados.ranking
-    .slice()
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .forEach((registro, index) => {
-      const li = document.createElement("li");
-
-      li.textContent =
-        `${index + 1}. ${registro.name} — ${registro.score} pontos`;
-
-      rankingEl.appendChild(li);
-    });
-}
-
-atualizarMoedas();
-atualizarRanking();
-
-// ======================================================
-// 4. LOJA DE SKINS
-// ======================================================
-
-const skins = [
-  {
-    id: "blue",
-    name: "Azul clássico",
-    color: "#48a8ff",
-    price: 0
-  },
-  {
-    id: "green",
-    name: "Verde neon",
-    color: "#44f0a5",
-    price: 30
-  },
-  {
-    id: "purple",
-    name: "Roxo cósmico",
-    color: "#bd70ff",
-    price: 60
-  },
-  {
-    id: "gold",
-    name: "Ouro",
-    color: "#ffd166",
-    price: 100
-  },
-  {
-    id: "red",
-    name: "Vermelho",
-    color: "#ff5470",
-    price: 150
-  },
-  {
-    id: "white",
-    name: "Branco estelar",
-    color: "#f4f7ff",
-    price: 220
-  }
+const SKINS = [
+  { id: "blue", name: "Azul padrão", color: "#38bdf8", price: 0 },
+  { id: "green", name: "Verde neon", color: "#4ade80", price: 50 },
+  { id: "purple", name: "Roxo cósmico", color: "#c084fc", price: 100 },
+  { id: "gold", name: "Dourado", color: "#facc15", price: 200 },
+  { id: "red", name: "Vermelho", color: "#fb7185", price: 300 },
+  { id: "white", name: "Branco gelo", color: "#f8fafc", price: 400 }
 ];
 
-function abrirLoja() {
+let coins = readNumber(STORAGE.coins, 0);
+let ownedSkins = readJSON(STORAGE.owned, ["blue"]);
+let currentSkin = localStorage.getItem(STORAGE.skin) || "blue";
+let soundEnabled = localStorage.getItem(STORAGE.sound) !== "false";
+
+let running = false;
+let paused = false;
+let animationId = null;
+let lastFrame = 0;
+let elapsed = 0;
+let score = 0;
+let earned = 0;
+let level = 1;
+let spawnTimer = 0;
+let shotTimer = 0;
+let enemyBullets = [];
+let particles = [];
+let keys = new Set();
+let player = null;
+let difficulty = "normal";
+let playerName = "Jogador";
+let previousTime = 0;
+let gameEnded = false;
+
+function readNumber(key, fallback) {
+  const value = Number(localStorage.getItem(key));
+  return Number.isFinite(value) && localStorage.getItem(key) !== null
+    ? value
+    : fallback;
+}
+
+function readJSON(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveProgress() {
+  localStorage.setItem(STORAGE.coins, String(coins));
+  localStorage.setItem(STORAGE.owned, JSON.stringify(ownedSkins));
+  localStorage.setItem(STORAGE.skin, currentSkin);
+  localStorage.setItem(STORAGE.sound, String(soundEnabled));
+}
+
+function updateCoins() {
+  coinsElement.textContent = coins;
+  shopCoins.textContent = coins;
+}
+
+function showScreen(screen) {
   menu.classList.add("hidden");
   game.classList.add("hidden");
-  shop.classList.remove("hidden");
-
-  renderizarLoja();
+  shop.classList.add("hidden");
+  screen.classList.remove("hidden");
 }
 
-function renderizarLoja() {
-  const container = $("shopItems");
-  container.innerHTML = "";
-
-  skins.forEach(skin => {
-    const desbloqueada = dados.skins.includes(skin.id);
-    const selecionada = dados.skin === skin.id;
-
-    const card = document.createElement("div");
-    card.className = "shop-item";
-
-    const preview = document.createElement("div");
-    preview.className = "skin-preview";
-    preview.style.background = skin.color;
-    preview.style.color = skin.color;
-
-    const titulo = document.createElement("h3");
-    titulo.textContent = skin.name;
-
-    const preco = document.createElement("p");
-
-    preco.textContent = skin.price === 0
-      ? "Grátis"
-      : `Preço: ${skin.price} moedas`;
-
-    const botao = document.createElement("button");
-    botao.className = "btn";
-
-    if (selecionada) {
-      botao.textContent = "Selecionada";
-      botao.disabled = true;
-    } else if (desbloqueada) {
-      botao.textContent = "Selecionar";
-
-      botao.addEventListener("click", () => {
-        dados.skin = skin.id;
-        salvarDados();
-        renderizarLoja();
-      });
-    } else {
-      botao.textContent = `Comprar (${skin.price} moedas)`;
-
-      botao.addEventListener("click", () => {
-        if (dados.coins < skin.price) {
-          alert("Você não tem moedas suficientes!");
-          return;
-        }
-
-        dados.coins -= skin.price;
-        dados.skins.push(skin.id);
-        dados.skin = skin.id;
-
-        salvarDados();
-        renderizarLoja();
-      });
-    }
-
-    card.append(preview, titulo, preco, botao);
-    container.appendChild(card);
-  });
-
-  atualizarMoedas();
+function getSkin() {
+  return SKINS.find((skin) => skin.id === currentSkin) || SKINS[0];
 }
 
-// ======================================================
-// 5. ESTADO DO JOGO
-// ======================================================
-
-const W = arena.width;
-const H = arena.height;
-
-let jogadores = [];
-let tiros = [];
-let itens = [];
-let particulas = [];
-
-let rodando = false;
-let pausado = false;
-let somLigado = true;
-let gameOverFlag = false;
-
-let inicioPartida = 0;
-let ultimoFrame = 0;
-let tempoJogo = 0;
-let pontos = 0;
-let moedasPartida = 0;
-let nivel = 1;
-
-let intervaloTiro = 0;
-let intervaloItem = 0;
-let ultimoTiro = 0;
-let ultimoItem = 0;
-let ultimoChefe = 0;
-
-let dificuldadeInicial = "normal";
-let velocidadeJogo = 1;
-let chefe = null;
-let audioContext = null;
-
-const teclas = Object.create(null);
-
-const coresTiro = [
-  "#ff5470",
-  "#ff9e64",
-  "#ffdc69"
-];
-
-function obterCorSkin(id) {
-  return skins.find(skin => skin.id === id)?.color
-    || "#48a8ff";
-}
-
-function criarJogador(id, nome, x, y, cor) {
+function createPlayer() {
   return {
-    id,
-    nome,
-    x,
-    y,
-    raio: 13,
-    velocidade: 235,
-    cor,
-    vivo: true,
-    escudoAte: 0,
-    invencivelAte: 0,
-    velocidadeAte: 0,
-    tempoSobrevivido: 0
+    x: WIDTH / 2,
+    y: HEIGHT - 75,
+    radius: 17,
+    speed: 330,
+    color: getSkin().color,
+    invulnerable: 0
   };
 }
 
-// ======================================================
-// 6. SOM
-// ======================================================
+function startGame() {
+  if (running) {
+    stopGame();
+  }
 
-function tocarSom(
-  frequencia = 440,
-  duracao = 0.08,
-  tipo = "sine"
-) {
-  if (!somLigado) return;
+  playerName = playerNameInput.value.trim().slice(0, 20) || "Jogador";
+  difficulty = difficultySelect.value || "normal";
 
-  try {
-    audioContext ||= new (
-      window.AudioContext || window.webkitAudioContext
-    )();
+  score = 0;
+  earned = 0;
+  level = 1;
+  elapsed = 0;
+  spawnTimer = 0;
+  shotTimer = 0;
+  enemyBullets = [];
+  particles = [];
+  keys.clear();
+  player = createPlayer();
 
-    if (audioContext.state === "suspended") {
-      audioContext.resume();
-    }
+  paused = false;
+  running = true;
+  gameEnded = false;
+  lastFrame = 0;
 
-    const oscilador = audioContext.createOscillator();
-    const volume = audioContext.createGain();
+  $("pauseBtn").textContent = "Pausar";
+  $("soundBtn").textContent = soundEnabled ? "Som: ligado" : "Som: desligado";
+  gameMessage.classList.add("hidden");
 
-    oscilador.type = tipo;
-    oscilador.frequency.value = frequencia;
-    volume.gain.value = 0.045;
+  updateHUD();
+  showScreen(game);
 
-    oscilador.connect(volume);
-    volume.connect(audioContext.destination);
+  cancelAnimationFrame(animationId);
+  animationId = requestAnimationFrame(loop);
+}
 
-    oscilador.start();
+function stopGame() {
+  running = false;
+  paused = false;
+  cancelAnimationFrame(animationId);
+  keys.clear();
+}
 
-    volume.gain.exponentialRampToValueAtTime(
-      0.001,
-      audioContext.currentTime + duracao
-    );
+function updateHUD() {
+  scoreElement.textContent = Math.floor(score);
+  levelElement.textContent = level;
+  timeElement.textContent = `${elapsed.toFixed(1)}s`;
+  earnedElement.textContent = earned;
+  updateCoins();
+}
 
-    oscilador.stop(audioContext.currentTime + duracao);
-  } catch (error) {
-    // O jogo continua mesmo se o áudio não estiver disponível.
+function loop(timestamp) {
+  if (!running) return;
+
+  if (!lastFrame) lastFrame = timestamp;
+  const delta = Math.min((timestamp - lastFrame) / 1000, 0.035);
+  lastFrame = timestamp;
+
+  if (!paused) {
+    update(delta);
+  }
+
+  draw();
+
+  if (running) {
+    animationId = requestAnimationFrame(loop);
   }
 }
 
-// ======================================================
-// 7. DIFICULDADE INFINITA
-// ======================================================
+function update(delta) {
+  elapsed += delta;
+  level = 1 + Math.floor(elapsed / 15);
 
-function calcularNivel(tempo) {
-  return Math.floor(tempo / 15) + 1;
-}
+  const playerSpeed = player.speed * delta;
+  let dx = 0;
+  let dy = 0;
 
-function atualizarDificuldade() {
-  nivel = calcularNivel(tempoJogo);
+  if (keys.has("ArrowLeft") || keys.has("a")) dx -= 1;
+  if (keys.has("ArrowRight") || keys.has("d")) dx += 1;
+  if (keys.has("ArrowUp") || keys.has("w")) dy -= 1;
+  if (keys.has("ArrowDown") || keys.has("s")) dy += 1;
 
-  const multiplicadorInicial = {
-    easy: 0.75,
-    normal: 1,
-    hard: 1.3
-  }[dificuldadeInicial] || 1;
+  if (dx && dy) {
+    dx *= Math.SQRT1_2;
+    dy *= Math.SQRT1_2;
+  }
 
-  velocidadeJogo = multiplicadorInicial *
-    (
-      1 +
-      Math.log1p(nivel - 1) * 0.48 +
-      (nivel - 1) * 0.035
-    );
+  player.x += dx * playerSpeed;
+  player.y += dy * playerSpeed;
 
-  intervaloTiro = Math.max(
-    0.12,
-    0.9 / (1 + (nivel - 1) * 0.085)
+  player.x = clamp(player.x, player.radius, WIDTH - player.radius);
+  player.y = clamp(player.y, player.radius, HEIGHT - player.radius);
+
+  player.invulnerable = Math.max(0, player.invulnerable - delta);
+
+  const spawnRates = {
+    easy: 0.85,
+    normal: 0.58,
+    hard: 0.36
+  };
+
+  spawnTimer += delta;
+  const spawnRate = Math.max(
+    0.18,
+    spawnRates[difficulty] / (1 + (level - 1) * 0.12)
   );
 
-  const quantidadeBase = 2 + Math.floor((nivel - 1) / 2);
-
-  return {
-    multiplicadorInicial,
-    quantidadeBase,
-    velocidade: velocidadeJogo
-  };
-}
-
-function atualizarHUD() {
-  timeEl.textContent = tempoJogo.toFixed(1);
-  scoreEl.textContent = pontos;
-  levelEl.textContent = nivel;
-  earnedEl.textContent = moedasPartida;
-}
-
-// ======================================================
-// 8. INICIAR PARTIDA
-// ======================================================
-
-function iniciarPartida() {
-  limparTeclas();
-
-  modoOnline = modeSelect.value === "create" ||
-    modeSelect.value === "join";
-
-  if (modoOnline && !db) {
-    onlineStatusEl.textContent =
-      "Configure o Firebase no script.js antes de jogar online.";
-    return;
+  if (spawnTimer >= spawnRate) {
+    spawnTimer = 0;
+    spawnEnemy();
   }
 
-  dificuldadeInicial = difficultySelect.value;
-
-  tempoJogo = 0;
-  pontos = 0;
-  moedasPartida = 0;
-  nivel = 1;
-
-  tiros = [];
-  itens = [];
-  particulas = [];
-  chefe = null;
-
-  inicioPartida = performance.now();
-  ultimoFrame = inicioPartida;
-  ultimoTiro = 0;
-  ultimoItem = 0;
-  ultimoChefe = 0;
-
-  const nome = playerNameInput.value.trim().slice(0, 16)
-    || "Jogador";
-
-  jogadores = [
-    criarJogador(
-      1,
-      nome,
-      W / 2,
-      H / 2,
-      obterCorSkin(dados.skin)
-    )
-  ];
-
-  gameOverFlag = false;
-  pausado = false;
-  rodando = true;
-
-  menu.classList.add("hidden");
-  shop.classList.add("hidden");
-  game.classList.remove("hidden");
-  gameMessageEl.classList.add("hidden");
-
-  pauseBtn.textContent = "⏸ Pausar";
-
-  roomInfoEl.textContent = modoOnline
-    ? "Conectando à sala online..."
-    : "Modo solo — sobreviva o máximo possível!";
-
-  atualizarDificuldade();
-  atualizarHUD();
-
-  if (modoOnline) {
-    prepararSalaOnline().catch(error => {
-      console.error(error);
-
-      onlineStatusEl.textContent =
-        "Não foi possível conectar à sala. Verifique o Firebase.";
-    });
+  for (const bullet of enemyBullets) {
+    bullet.x += bullet.vx * delta;
+    bullet.y += bullet.vy * delta;
+    bullet.rotation += delta * 3;
   }
 
-  requestAnimationFrame(loop);
-}
+  enemyBullets = enemyBullets.filter(
+    (bullet) =>
+      bullet.x > -40 &&
+      bullet.x < WIDTH + 40 &&
+      bullet.y > -40 &&
+      bullet.y < HEIGHT + 40
+  );
 
-// ======================================================
-// 9. SALAS ONLINE FIREBASE
-// ======================================================
+  shotTimer += delta;
 
-function removerOuvintesSala() {
-  ouvintesSala.forEach(({ ref, evento, callback }) => {
-    ref.off(evento, callback);
-  });
-
-  ouvintesSala = [];
-}
-
-async function prepararSalaOnline() {
-  if (!db) {
-    throw new Error("Firebase não configurado.");
+  // Pequena recompensa por sobreviver.
+  if (Math.floor(elapsed) > Math.floor(previousTime)) {
+    score += 10;
+    previousTime = elapsed;
   }
 
-  if (!jogadorOnlineId) {
-    const cred = await firebase.auth().signInAnonymously();
-    jogadorOnlineId = cred.user.uid;
+  // Pontuação por tempo sobrevivido.
+  if (Math.floor(elapsed) > 0 && Math.floor(elapsed) % 10 === 0) {
+    // A pontuação principal é atualizada por segundo acima.
   }
 
-  const modo = modeSelect.value;
-
-  if (modo === "create") {
-    salaCodigo = Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase();
-
-    salaRef = db.ref("salas/" + salaCodigo);
-
-    await salaRef.set({
-      anfitriao: jogadorOnlineId,
-      estado: "aguardando",
-      criadoEm: firebase.database.ServerValue.TIMESTAMP
-    });
-
-    souAnfitriao = true;
-  } else {
-    salaCodigo = roomCodeInput.value.trim().toUpperCase();
-
-    if (!/^[A-Z0-9]{6}$/.test(salaCodigo)) {
-      throw new Error(
-        "Digite um código de sala válido com 6 caracteres."
-      );
-    }
-
-    salaRef = db.ref("salas/" + salaCodigo);
-
-    const snapshot = await salaRef.once("value");
-
-    if (!snapshot.exists()) {
-      throw new Error("Sala não encontrada.");
-    }
-
-    souAnfitriao = false;
-  }
-
-  const nome = playerNameInput.value.trim().slice(0, 16)
-    || "Jogador";
-
-  const meusDados = {
-    nome,
-    x: W / 2,
-    y: H / 2,
-    cor: obterCorSkin(dados.skin),
-    conectado: true,
-    atualizadoEm: firebase.database.ServerValue.TIMESTAMP
-  };
-
-  await salaRef.child(
-    "jogadores/" + jogadorOnlineId
-  ).set(meusDados);
-
-  await salaRef.child(
-    "jogadores/" + jogadorOnlineId
-  ).onDisconnect().remove();
-
-  roomInfoEl.textContent =
-    `Sala: ${salaCodigo} — compartilhe este código!`;
-
-  onlineStatusEl.textContent =
-    `Conectado à sala ${salaCodigo}.`;
-
-  const jogadoresRef = salaRef.child("jogadores");
-
-  const callback = snapshot => {
-    if (!snapshot.exists()) return;
-
-    const lista = snapshot.val();
-    playersCountEl.textContent = Object.keys(lista).length;
-
-    Object.entries(lista).forEach(([id, info]) => {
-      if (id === jogadorOnlineId) return;
-
-      let outro = jogadores.find(j => j.id === id);
-
-      if (!outro) {
-        outro = criarJogador(
-          id,
-          info.nome || "Jogador",
-          Number(info.x) || W / 2,
-          Number(info.y) || H / 2,
-          info.cor || "#44f0a5"
-        );
-
-        outro.remoto = true;
-        jogadores.push(outro);
-      }
-
-      outro.nome = info.nome || "Jogador";
-      outro.x = Number(info.x) || outro.x;
-      outro.y = Number(info.y) || outro.y;
-      outro.cor = info.cor || outro.cor;
-    });
-  };
-
-  jogadoresRef.on("value", callback);
-
-  ouvintesSala.push({
-    ref: jogadoresRef,
-    evento: "value",
-    callback
-  });
+  updateParticles(delta);
+  checkCollisions();
+  updateHUD();
 }
 
-let ultimoEnvioOnline = 0;
-
-function enviarPosicaoOnline(agora) {
-  if (!modoOnline || !salaRef || !jogadorOnlineId) return;
-  if (agora - ultimoEnvioOnline < 80) return;
-
-  ultimoEnvioOnline = agora;
-
-  const eu = jogadores.find(j => j.id === 1 && !j.remoto);
-  if (!eu) return;
-
-  salaRef.child(
-    "jogadores/" + jogadorOnlineId
-  ).update({
-    x: eu.x,
-    y: eu.y,
-    cor: eu.cor,
-    atualizadoEm: firebase.database.ServerValue.TIMESTAMP
-  }).catch(error => {
-    console.warn("Falha ao atualizar jogador online:", error);
-  });
-}
-
-async function sairDaSala() {
-  removerOuvintesSala();
-
-  if (salaRef && jogadorOnlineId) {
-    try {
-      await salaRef.child(
-        "jogadores/" + jogadorOnlineId
-      ).remove();
-    } catch (error) {
-      console.warn("Não foi possível sair da sala.", error);
-    }
-  }
-
-  salaRef = null;
-  salaCodigo = null;
-  modoOnline = false;
-  souAnfitriao = false;
-}
-
-// ======================================================
-// 10. PROJÉTEIS E ATAQUES
-// ======================================================
-
-function criarTiro(x, y, vx, vy, raio = 7, cor) {
-  tiros.push({
-    x,
-    y,
-    vx,
-    vy,
-    raio,
-    cor: cor || coresTiro[
-      Math.floor(Math.random() * coresTiro.length)
-    ]
-  });
-}
-
-function criarTiroDaBorda(alvo) {
-  const lado = Math.floor(Math.random() * 4);
-
+function spawnEnemy() {
+  const edge = Math.floor(Math.random() * 3);
   let x;
   let y;
 
-  if (lado === 0) {
-    x = Math.random() * W;
-    y = -10;
-  } else if (lado === 1) {
-    x = W + 10;
-    y = Math.random() * H;
-  } else if (lado === 2) {
-    x = Math.random() * W;
-    y = H + 10;
+  if (edge === 0) {
+    x = Math.random() * WIDTH;
+    y = -20;
+  } else if (edge === 1) {
+    x = Math.random() * WIDTH;
+    y = HEIGHT + 20;
   } else {
-    x = -10;
-    y = Math.random() * H;
+    x = Math.random() < 0.5 ? -20 : WIDTH + 20;
+    y = Math.random() * HEIGHT;
   }
 
-  const dx = alvo.x - x;
-  const dy = alvo.y - y;
-  const distancia = Math.hypot(dx, dy) || 1;
+  const angle = Math.atan2(player.y - y, player.x - x);
+  const baseSpeed = {
+    easy: 100,
+    normal: 145,
+    hard: 190
+  }[difficulty];
 
-  const velocidadeBase = 115 + Math.min(nivel * 3, 450);
+  const speed = baseSpeed + level * 5;
 
-  criarTiro(
+  const aim = Math.random() < 0.72;
+  const direction = aim ? angle : Math.random() * Math.PI * 2;
+
+  const bullet = {
     x,
     y,
-    (dx / distancia) * velocidadeBase * velocidadeJogo,
-    (dy / distancia) * velocidadeBase * velocidadeJogo
-  );
-}
-
-function criarRajadaCircular() {
-  const alvo = jogadores.find(j => j.vivo && !j.remoto);
-  if (!alvo) return;
-
-  const quantidade = Math.min(8 + nivel, 50);
-  const velocidade = (100 + nivel * 4) * velocidadeJogo;
-
-  for (let i = 0; i < quantidade; i++) {
-    const angulo = Math.PI * 2 * i / quantidade;
-
-    criarTiro(
-      chefe ? chefe.x : W / 2,
-      chefe ? chefe.y : H / 2,
-      Math.cos(angulo) * velocidade,
-      Math.sin(angulo) * velocidade,
-      6
-    );
-  }
-}
-
-// ======================================================
-// 11. CHEFÕES
-// ======================================================
-
-function criarChefe() {
-  chefe = {
-    x: W / 2,
-    y: 90,
-    raio: 27,
-    vida: 20 + nivel * 5,
-    vidaMaxima: 20 + nivel * 5,
-    velocidade: 65 + nivel * 2,
-    direcao: 1,
-    ultimoAtaque: 0
+    radius: 8,
+    vx: Math.cos(direction) * speed,
+    vy: Math.sin(direction) * speed,
+    rotation: 0,
+    color: Math.random() < 0.5 ? "#fb4141" : "#fb923c"
   };
 
-  gameMessageEl.textContent = `CHEFÃO DO NÍVEL ${nivel}!`;
-  gameMessageEl.classList.remove("hidden");
-
-  tocarSom(130, 0.35, "sawtooth");
+  enemyBullets.push(bullet);
 }
 
-function atualizarChefe(dt, agora) {
-  if (!chefe) return;
+function checkCollisions() {
+  if (!player || player.invulnerable > 0) return;
 
-  chefe.x += chefe.direcao * chefe.velocidade * velocidadeJogo * dt;
+  for (const bullet of enemyBullets) {
+    const distance = Math.hypot(
+      bullet.x - player.x,
+      bullet.y - player.y
+    );
 
-  if (chefe.x < chefe.raio || chefe.x > W - chefe.raio) {
-    chefe.direcao *= -1;
-  }
-
-  if (agora - chefe.ultimoAtaque > Math.max(300, 1300 - nivel * 20)) {
-    chefe.ultimoAtaque = agora;
-    criarRajadaCircular();
+    if (distance < bullet.radius + player.radius * 0.75) {
+      endGame();
+      return;
+    }
   }
 }
 
-function desenharChefe() {
-  if (!chefe) return;
+function endGame() {
+  if (gameEnded) return;
 
-  ctx.save();
+  gameEnded = true;
+  running = false;
+  paused = false;
+  cancelAnimationFrame(animationId);
 
-  ctx.shadowColor = "#ff5470";
-  ctx.shadowBlur = 25;
-  ctx.fillStyle = "#ff5470";
+  const bonus = Math.max(0, Math.floor(score / 20));
+  earned += bonus;
+  coins += earned;
 
-  ctx.beginPath();
-  ctx.arc(chefe.x, chefe.y, chefe.raio, 0, Math.PI * 2);
-  ctx.fill();
+  saveProgress();
+  updateCoins();
+  updateHUD();
+  saveRanking();
 
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(chefe.x - 30, chefe.y - 42, 60, 6);
+  $("gameMessage").innerHTML = `
+    <h2>Fim de jogo!</h2>
+    <p>Jogador: ${escapeHTML(playerName)}</p>
+    <p>Pontuação: <strong>${Math.floor(score)}</strong></p>
+    <p>Tempo sobrevivido: <strong>${elapsed.toFixed(1)}s</strong></p>
+    <p>Moedas ganhas nesta partida: <strong>${earned}</strong></p>
+    <button id="restartBtn" class="primary-button">Jogar novamente</button>
+    <button id="endMenuBtn" class="secondary-button">Voltar ao menu</button>
+  `;
 
-  ctx.fillStyle = "#44f0a5";
-  ctx.fillRect(
-    chefe.x - 30,
-    chefe.y - 42,
-    60 * Math.max(0, chefe.vida / chefe.vidaMaxima),
-    6
-  );
+  gameMessage.classList.remove("hidden");
 
-  ctx.restore();
+  $("restartBtn").addEventListener("click", startGame);
+  $("endMenuBtn").addEventListener("click", returnToMenu);
 }
 
-// ======================================================
-// 12. ITENS E PODERES
-// ======================================================
+function saveRanking() {
+  const ranking = readJSON(STORAGE.ranking, []);
 
-function criarItem() {
-  const tipos = ["escudo", "velocidade", "invencivel", "moeda"];
-  const tipo = tipos[Math.floor(Math.random() * tipos.length)];
-
-  itens.push({
-    x: 25 + Math.random() * (W - 50),
-    y: 25 + Math.random() * (H - 50),
-    raio: 11,
-    tipo,
-    criado: performance.now()
+  ranking.push({
+    name: playerName,
+    score: Math.floor(score),
+    time: Number(elapsed.toFixed(1))
   });
+
+  ranking.sort((a, b) => b.score - a.score);
+  localStorage.setItem(STORAGE.ranking, JSON.stringify(ranking.slice(0, 10)));
+  renderRanking();
 }
 
-function ativarItem(item, jogador, agora) {
-  if (item.tipo === "escudo") {
-    jogador.escudoAte = agora + 6000;
-    tocarSom(660);
-  } else if (item.tipo === "velocidade") {
-    jogador.velocidadeAte = agora + 5000;
-    tocarSom(800);
-  } else if (item.tipo === "invencivel") {
-    jogador.invencivelAte = agora + 3000;
-    tocarSom(950);
-  } else if (item.tipo === "moeda") {
-    moedasPartida += 5;
-    tocarSom(1100);
-  }
+function renderRanking() {
+  const container = $("ranking");
+  const ranking = readJSON(STORAGE.ranking, []);
 
-  criarParticulas(item.x, item.y, "#ffd166", 12);
+  container.innerHTML = `
+    <h2>Ranking local</h2>
+    <ol class="ranking-list">
+      ${
+        ranking.length
+          ? ranking.map((item) => `
+            <li>
+              <span>${escapeHTML(item.name)}</span>
+              <strong>${item.score} pts</strong>
+            </li>
+          `).join("")
+          : "<li>Ainda não há partidas registradas.</li>"
+      }
+    </ol>
+  `;
 }
 
-function desenharItens() {
-  itens.forEach(item => {
-    const cores = {
-      escudo: "#48a8ff",
-      velocidade: "#44f0a5",
-      invencivel: "#bd70ff",
-      moeda: "#ffd166"
-    };
-
-    const simbolos = {
-      escudo: "S",
-      velocidade: "V",
-      invencivel: "I",
-      moeda: "$"
-    };
-
-    ctx.beginPath();
-    ctx.fillStyle = cores[item.tipo];
-    ctx.arc(item.x, item.y, item.raio, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#080b16";
-    ctx.font = "bold 12px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(simbolos[item.tipo], item.x, item.y);
-  });
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
 }
 
-// ======================================================
-// 13. PARTÍCULAS
-// ======================================================
+function returnToMenu() {
+  stopGame();
+  gameMessage.classList.add("hidden");
+  showScreen(menu);
+  renderRanking();
+  updateCoins();
+}
 
-function criarParticulas(x, y, cor, quantidade = 8) {
-  for (let i = 0; i < quantidade; i++) {
-    const angulo = Math.random() * Math.PI * 2;
-    const velocidade = 35 + Math.random() * 140;
+function togglePause() {
+  if (!running || gameEnded) return;
 
-    particulas.push({
-      x,
-      y,
-      vx: Math.cos(angulo) * velocidade,
-      vy: Math.sin(angulo) * velocidade,
-      vida: 0.35 + Math.random() * 0.5,
-      cor
+  paused = !paused;
+  $("pauseBtn").textContent = paused ? "Continuar" : "Pausar";
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem(STORAGE.sound, String(soundEnabled));
+  $("soundBtn").textContent = soundEnabled ? "Som: ligado" : "Som: desligado";
+}
+
+function openShop() {
+  renderShop();
+  showScreen(shop);
+}
+
+function renderShop() {
+  shopCoins.textContent = coins;
+
+  shopItems.innerHTML = SKINS.map((skin) => {
+    const owned = ownedSkins.includes(skin.id);
+    const selected = currentSkin === skin.id;
+
+    let buttonText;
+    if (selected) {
+      buttonText = "Equipado";
+    } else if (owned) {
+      buttonText = "Equipar";
+    } else {
+      buttonText = `Comprar — ${skin.price} moedas`;
+    }
+
+    return `
+      <article class="shop-item ${selected ? "selected" : ""}">
+        <div style="
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: ${skin.color};
+          box-shadow: 0 0 20px ${skin.color}66;
+        "></div>
+        <h3>${escapeHTML(skin.name)}</h3>
+        <p>${owned ? "Skin desbloqueada" : "Personalize seu jogador."}</p>
+        <button
+          class="${selected ? "secondary-button" : "primary-button"}"
+          data-skin="${skin.id}"
+          ${selected ? "disabled" : ""}
+        >${buttonText}</button>
+      </article>
+    `;
+  }).join("");
+
+  shopItems.querySelectorAll("[data-skin]").forEach((button) => {
+    button.addEventListener("click", () => {
+      buyOrEquipSkin(button.dataset.skin);
     });
+  });
+}
+
+function buyOrEquipSkin(id) {
+  const skin = SKINS.find((item) => item.id === id);
+  if (!skin) return;
+
+  if (ownedSkins.includes(id)) {
+    currentSkin = id;
+    saveProgress();
+    renderShop();
+    return;
   }
+
+  if (coins < skin.price) {
+    alert("Você não tem moedas suficientes para comprar esta skin.");
+    return;
+  }
+
+  coins -= skin.price;
+  ownedSkins.push(id);
+  currentSkin = id;
+
+  saveProgress();
+  updateCoins();
+  renderShop();
 }
 
-function atualizarParticulas(dt) {
-  particulas.forEach(p => {
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vida -= dt;
-  });
-
-  particulas = particulas.filter(p => p.vida > 0);
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function desenharParticulas() {
-  particulas.forEach(p => {
-    ctx.globalAlpha = Math.min(1, p.vida * 2);
-    ctx.fillStyle = p.cor;
-    ctx.fillRect(p.x, p.y, 4, 4);
-  });
+function updateParticles(delta) {
+  for (const particle of particles) {
+    particle.x += particle.vx * delta;
+    particle.y += particle.vy * delta;
+    particle.life -= delta;
+  }
+
+  particles = particles.filter((particle) => particle.life > 0);
+}
+
+function drawBackground() {
+  ctx.fillStyle = "#050914";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  ctx.strokeStyle = "#172033";
+  ctx.lineWidth = 1;
+
+  for (let x = 0; x <= WIDTH; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, HEIGHT);
+    ctx.stroke();
+  }
+
+  for (let y = 0; y <= HEIGHT; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(WIDTH, y);
+    ctx.stroke();
+  }
+
+  // Pontos decorativos.
+  ctx.fillStyle = "#64748b";
+
+  for (let i = 0; i < 35; i++) {
+    const x = (i * 173) % WIDTH;
+    const y = (i * 97) % HEIGHT;
+
+    ctx.globalAlpha = 0.2 + ((i % 3) * 0.15);
+    ctx.fillRect(x, y, 2, 2);
+  }
 
   ctx.globalAlpha = 1;
 }
 
-// ======================================================
-// 14. MOVIMENTO E COLISÕES
-// ======================================================
+function drawPlayer() {
+  if (!player) return;
 
-function moverJogador(j, dt, agora) {
-  if (!j.vivo || j.remoto) return;
-
-  let dx = 0;
-  let dy = 0;
-
-  if (teclas.ArrowLeft || teclas.a) dx -= 1;
-  if (teclas.ArrowRight || teclas.d) dx += 1;
-  if (teclas.ArrowUp || teclas.w) dy -= 1;
-  if (teclas.ArrowDown || teclas.s) dy += 1;
-
-  const comprimento = Math.hypot(dx, dy) || 1;
-  const multiplicador = agora < j.velocidadeAte ? 1.7 : 1;
-
-  j.x += dx / comprimento * j.velocidade * multiplicador * dt;
-  j.y += dy / comprimento * j.velocidade * multiplicador * dt;
-
-  j.x = Math.max(j.raio, Math.min(W - j.raio, j.x));
-  j.y = Math.max(j.raio, Math.min(H - j.raio, j.y));
-
-  j.tempoSobrevivido = tempoJogo;
-}
-
-function verificarColisoes(agora) {
-  jogadores.forEach(j => {
-    if (!j.vivo || j.remoto) return;
-
-    tiros.forEach(t => {
-      const distancia = Math.hypot(j.x - t.x, j.y - t.y);
-
-      if (distancia < j.raio + t.raio) {
-        if (agora < j.invencivelAte) {
-          criarParticulas(t.x, t.y, "#bd70ff", 3);
-          t.fora = true;
-        } else if (agora < j.escudoAte) {
-          j.escudoAte = 0;
-          t.fora = true;
-          criarParticulas(j.x, j.y, "#48a8ff", 15);
-          tocarSom(300, 0.12);
-        } else {
-          j.vivo = false;
-          criarParticulas(j.x, j.y, "#ff5470", 25);
-          tocarSom(100, 0.3, "sawtooth");
-        }
-      }
-    });
-
-    itens.forEach(item => {
-      const distancia = Math.hypot(j.x - item.x, j.y - item.y);
-
-      if (distancia < j.raio + item.raio) {
-        ativarItem(item, j, agora);
-        item.pego = true;
-      }
-    });
-  });
-
-  tiros = tiros.filter(t =>
-    !t.fora &&
-    t.x > -80 && t.x < W + 80 &&
-    t.y > -80 && t.y < H + 80
-  );
-
-  itens = itens.filter(item => !item.pego);
-}
-
-// ======================================================
-// 15. DESENHO DA ARENA
-// ======================================================
-
-function desenharFundo() {
-  ctx.fillStyle = "#070b15";
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.strokeStyle = "#18233b";
-  ctx.lineWidth = 1;
-
-  const tamanho = 36;
-
-  for (let x = 0; x < W; x += tamanho) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
-  }
-
-  for (let y = 0; y < H; y += tamanho) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-}
-
-function desenharJogadores(agora) {
-  jogadores.forEach(j => {
-    if (!j.vivo) return;
-
-    ctx.save();
-    ctx.shadowColor = j.cor;
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = j.cor;
-
-    ctx.beginPath();
-    ctx.arc(j.x, j.y, j.raio, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.shadowBlur = 0;
-
-    if (agora < j.escudoAte) {
-      ctx.strokeStyle = "#48a8ff";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(j.x, j.y, j.raio + 6, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    if (agora < j.invencivelAte) {
-      ctx.strokeStyle = "#bd70ff";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(j.x, j.y, j.raio + 10, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#f4f7ff";
-    ctx.font = "12px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(j.nome, j.x, j.y - 22);
-
-    ctx.restore();
-  });
-}
-
-function desenharTiros() {
-  tiros.forEach(t => {
-    ctx.save();
-    ctx.shadowColor = t.cor;
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = t.cor;
-
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, t.raio, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  });
-}
-
-function desenharOverlay() {
-  if (!pausado) return;
-
-  ctx.fillStyle = "#050813bb";
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.font = "bold 36px Arial";
-  ctx.fillText("PAUSADO", W / 2, H / 2);
-}
-
-// ======================================================
-// 16. LOOP PRINCIPAL
-// ======================================================
-
-function loop(agora) {
-  if (!rodando) return;
-
-  requestAnimationFrame(loop);
-
-  const dt = Math.min((agora - ultimoFrame) / 1000, 0.04);
-  ultimoFrame = agora;
-
-  if (pausado || gameOverFlag) {
-    desenharFundo();
-    desenharTiros();
-    desenharItens();
-    desenharChefe();
-    desenharJogadores(agora);
-    desenharParticulas();
-    desenharOverlay();
+  if (player.invulnerable > 0 && Math.floor(performance.now() / 100) % 2 === 0) {
     return;
   }
 
-  tempoJogo = (agora - inicioPartida) / 1000;
+  ctx.save();
+  ctx.translate(player.x, player.y);
 
-  atualizarDificuldade();
+  ctx.shadowColor = player.color;
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = player.color;
 
-  const config = {
-    quantidadeBase: 2 + Math.floor((nivel - 1) / 2)
-  };
+  ctx.beginPath();
+  ctx.moveTo(0, -player.radius - 5);
+  ctx.lineTo(player.radius, player.radius);
+  ctx.lineTo(0, player.radius * 0.55);
+  ctx.lineTo(-player.radius, player.radius);
+  ctx.closePath();
+  ctx.fill();
 
-  jogadores.forEach(j => moverJogador(j, dt, agora));
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#ffffff";
 
-  if (agora - ultimoTiro >= intervaloTiro * 1000) {
-    ultimoTiro = agora;
+  ctx.beginPath();
+  ctx.arc(0, 2, 4, 0, Math.PI * 2);
+  ctx.fill();
 
-    const alvo = jogadores.find(j => j.vivo && !j.remoto);
+  ctx.restore();
+}
 
-    if (alvo) {
-      const quantidade = Math.min(config.quantidadeBase, 60);
+function drawBullets() {
+  for (const bullet of enemyBullets) {
+    ctx.save();
+    ctx.translate(bullet.x, bullet.y);
+    ctx.rotate(bullet.rotation);
 
-      for (let i = 0; i < quantidade; i++) {
-        criarTiroDaBorda(alvo);
-      }
-    }
-  }
+    ctx.shadowColor = bullet.color;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = bullet.color;
 
-  const intervaloItens = Math.max(2.5, 7 - nivel * 0.08);
+    ctx.beginPath();
+    ctx.arc(0, 0, bullet.radius, 0, Math.PI * 2);
+    ctx.fill();
 
-  if (agora - ultimoItem >= intervaloItens * 1000) {
-    ultimoItem = agora;
-    criarItem();
-  }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ffffff";
 
-  if (nivel % 5 === 0 && nivel !== ultimoChefe && !chefe) {
-    ultimoChefe = nivel;
-    criarChefe();
-  }
+    ctx.beginPath();
+    ctx.arc(-2, -2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
 
-  if (chefe) {
-    atualizarChefe(dt, agora);
-
-    if (tempoJogo - (chefe.inicio || tempoJogo) > 15) {
-      chefe = null;
-      pontos += 100 + nivel * 10;
-      moedasPartida += 10;
-      criarParticulas(W / 2, 90, "#ffd166", 30);
-      gameMessageEl.textContent = "Chefão derrotado! +10 moedas";
-      gameMessageEl.classList.remove("hidden");
-      tocarSom(880, 0.25);
-    } else if (!chefe.inicio) {
-      chefe.inicio = tempoJogo;
-    }
-  }
-
-  tiros.forEach(t => {
-    t.x += t.vx * dt;
-    t.y += t.vy * dt;
-  });
-
-  atualizarParticulas(dt);
-  verificarColisoes(agora);
-  enviarPosicaoOnline(agora);
-
-  pontos = Math.floor(tempoJogo * 10) + (nivel - 1) * 25;
-
-  desenharFundo();
-  desenharItens();
-  desenharTiros();
-  desenharChefe();
-  desenharJogadores(agora);
-  desenharParticulas();
-
-  atualizarHUD();
-
-  const jogadorLocal = jogadores.find(j => j.id === 1 && !j.remoto);
-
-  if (!jogadorLocal || !jogadorLocal.vivo) {
-    finalizarPartida();
+    ctx.restore();
   }
 }
 
-// ======================================================
-// 17. FIM DE PARTIDA
-// ======================================================
-
-function finalizarPartida() {
-  if (gameOverFlag) return;
-
-  gameOverFlag = true;
-  rodando = false;
-
-  const moedasGanhas = Math.max(1, Math.floor(tempoJogo / 10))
-    + moedasPartida;
-
-  dados.coins += moedasGanhas;
-
-  const nome = playerNameInput.value.trim().slice(0, 16)
-    || "Jogador";
-
-  dados.ranking.push({
-    name: nome,
-    score: pontos,
-    date: new Date().toISOString()
-  });
-
-  dados.ranking.sort((a, b) => b.score - a.score);
-  dados.ranking = dados.ranking.slice(0, 10);
-
-  salvarDados();
-  atualizarRanking();
-
-  gameMessageEl.innerHTML = "";
-
-  const titulo = document.createElement("h2");
-  titulo.textContent = "FIM DE JOGO";
-
-  const resumo = document.createElement("p");
-  resumo.textContent =
-    `Você chegou ao nível ${nivel}, sobreviveu ${tempoJogo.toFixed(1)} segundos e fez ${pontos} pontos.`;
-
-  const premio = document.createElement("p");
-  premio.textContent = `Você ganhou ${moedasGanhas} moedas!`;
-
-  const reiniciar = document.createElement("button");
-  reiniciar.className = "btn primary full";
-  reiniciar.textContent = "Jogar novamente";
-  reiniciar.addEventListener("click", iniciarPartida);
-
-  const voltar = document.createElement("button");
-  voltar.className = "btn full";
-  voltar.textContent = "Voltar ao menu";
-  voltar.addEventListener("click", voltarMenu);
-
-  gameMessageEl.append(titulo, resumo, premio, reiniciar, voltar);
-  gameMessageEl.classList.remove("hidden");
-
-  tocarSom(180, 0.5, "sawtooth");
-}
-
-// ======================================================
-// 18. PAUSA, MENU E TELA CHEIA
-// ======================================================
-
-function alternarPausa() {
-  if (!rodando || gameOverFlag) return;
-
-  pausado = !pausado;
-
-  if (!pausado) {
-    inicioPartida = performance.now() - tempoJogo * 1000;
+function drawParticles() {
+  for (const particle of particles) {
+    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(particle.x, particle.y, 3, 3);
   }
 
-  pauseBtn.textContent = pausado ? "▶ Continuar" : "⏸ Pausar";
-
-  if (pausado) limparTeclas();
+  ctx.globalAlpha = 1;
 }
 
-async function voltarMenu() {
-  rodando = false;
-  pausado = false;
-  gameOverFlag = false;
+function draw() {
+  drawBackground();
+  drawBullets();
+  drawParticles();
+  drawPlayer();
 
-  limparTeclas();
-  await sairDaSala();
+  if (paused && running) {
+    ctx.fillStyle = "#020617bb";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  game.classList.add("hidden");
-  shop.classList.add("hidden");
-  menu.classList.remove("hidden");
-
-  gameMessageEl.classList.add("hidden");
-
-  onlineStatusEl.textContent = db
-    ? "Firebase configurado."
-    : "Modo solo disponível. Configure o Firebase para jogar online.";
-}
-
-function limparTeclas() {
-  Object.keys(teclas).forEach(k => {
-    teclas[k] = false;
-  });
-}
-
-async function alternarTelaCheia() {
-  try {
-    if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen();
-    } else {
-      await document.exitFullscreen();
-    }
-  } catch (error) {
-    console.warn("Tela cheia não disponível.", error);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 42px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSADO", WIDTH / 2, HEIGHT / 2);
   }
 }
 
-// ======================================================
-// 19. CONTROLES DE TECLADO
-// ======================================================
+// ========================================
+// CONTROLES
+// ========================================
 
-window.addEventListener("keydown", event => {
-  const tecla = event.key.length === 1
+document.addEventListener("keydown", (event) => {
+  const key = event.key.length === 1
     ? event.key.toLowerCase()
     : event.key;
 
   if ([
-    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
+    " "
   ].includes(event.key)) {
     event.preventDefault();
   }
 
-  teclas[tecla] = true;
-
-  if (event.repeat) return;
-
-  if (
-    event.key.toLowerCase() === "p" ||
-    event.key === "Escape"
-  ) {
-    alternarPausa();
+  if (key === "Escape" && running) {
+    togglePause();
+    return;
   }
+
+  keys.add(key);
 });
 
-window.addEventListener("keyup", event => {
-  const tecla = event.key.length === 1
+document.addEventListener("keyup", (event) => {
+  const key = event.key.length === 1
     ? event.key.toLowerCase()
     : event.key;
 
-  teclas[tecla] = false;
+  keys.delete(key);
 });
 
-window.addEventListener("blur", limparTeclas);
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && rodando && !pausado && !gameOverFlag) {
-    alternarPausa();
-  }
+window.addEventListener("blur", () => {
+  keys.clear();
 });
 
-// ======================================================
-// 20. CONTROLES DE TOQUE
-// ======================================================
+document.querySelectorAll("[data-key]").forEach((button) => {
+  const key = button.dataset.key;
 
-document.querySelectorAll("[data-key]").forEach(botao => {
-  const tecla = botao.dataset.key;
-
-  const pressionar = event => {
+  const press = (event) => {
     event.preventDefault();
-    teclas[tecla] = true;
-
-    try {
-      botao.setPointerCapture(event.pointerId);
-    } catch (error) {
-      // Captura não disponível.
-    }
+    keys.add(key);
   };
 
-  const soltar = event => {
+  const release = (event) => {
     event.preventDefault();
-    teclas[tecla] = false;
+    keys.delete(key);
   };
 
-  botao.addEventListener("pointerdown", pressionar);
-  botao.addEventListener("pointerup", soltar);
-  botao.addEventListener("pointercancel", soltar);
-  botao.addEventListener("lostpointercapture", soltar);
+  button.addEventListener("pointerdown", press);
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("pointerleave", release);
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
 });
 
-// ======================================================
-// 21. MENU E BOTÕES
-// ======================================================
+// ========================================
+// BOTÕES DA INTERFACE
+// ========================================
 
-modeSelect.addEventListener("change", () => {
-  const online = modeSelect.value !== "solo";
+$("startBtn").addEventListener("click", startGame);
+$("shopBtn").addEventListener("click", openShop);
+$("backBtn").addEventListener("click", () => showScreen(menu));
+$("pauseBtn").addEventListener("click", togglePause);
+$("soundBtn").addEventListener("click", toggleSound);
+$("menuBtn").addEventListener("click", returnToMenu);
 
-  nameBox.classList.remove("hidden");
-  joinBox.classList.toggle("hidden", modeSelect.value !== "join");
+// ========================================
+// INICIALIZAÇÃO
+// ========================================
 
-  startBtn.textContent = modeSelect.value === "create"
-    ? "🌐 CRIAR SALA"
-    : modeSelect.value === "join"
-      ? "🔗 ENTRAR NA SALA"
-      : "▶ JOGAR";
-
-  onlineStatusEl.textContent = online
-    ? "O modo online exige uma configuração válida do Firebase."
-    : "Modo solo disponível.";
-});
-
-startBtn.addEventListener("click", iniciarPartida);
-shopBtn.addEventListener("click", abrirLoja);
-
-backBtn.addEventListener("click", () => {
-  shop.classList.add("hidden");
-  menu.classList.remove("hidden");
-});
-
-pauseBtn.addEventListener("click", alternarPausa);
-
-soundBtn.addEventListener("click", () => {
-  somLigado = !somLigado;
-  soundBtn.textContent = somLigado
-    ? "🔊 Som ligado"
-    : "🔇 Som desligado";
-
-  if (somLigado) tocarSom(600);
-});
-
-fullBtn.addEventListener("click", alternarTelaCheia);
-menuBtn.addEventListener("click", voltarMenu);
-
-// ======================================================
-// 22. AJUSTES INICIAIS
-// ======================================================
-
-joinBox.classList.add("hidden");
-
-onlineStatusEl.textContent = db
-  ? "Firebase configurado. O modo online pode ser utilizado."
-  : "Modo solo disponível. Configure o Firebase para jogar online.";
-
-atualizarMoedas();
-atualizarRanking();
+updateCoins();
+renderRanking();
+showScreen(menu);
