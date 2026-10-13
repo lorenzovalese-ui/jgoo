@@ -1,4 +1,3 @@
-
 "use strict";
 
 // ======================================================
@@ -6,15 +5,14 @@
 // ======================================================
 
 // 1. CONFIGURAÇÃO DO FIREBASE
-// Preencha com os dados do seu projeto Firebase.
-// Sem essa configuração, o modo solo continua funcionando.
+// Preencha com os dados reais do seu projeto.
 
 const firebaseConfig = {
-  apiKey: "COLOQUE_SUA_API_KEY",
-  authDomain: "SEU-PROJETO.firebaseapp.com",
-  databaseURL: "https://SEU-PROJETO-default-rtdb.firebaseio.com",
-  projectId: "SEU-PROJETO",
-  appId: "COLOQUE_SEU_APP_ID"
+  apiKey: "SUA_API_KEY_REAL",
+  authDomain: "desvie-dos-tiros.firebaseapp.com",
+  databaseURL: "https://desvie-dos-tiros-default-rtdb.firebaseio.com",
+  projectId: "desvie-dos-tiros",
+  appId: "SEU_APP_ID_REAL"
 };
 
 let db = null;
@@ -27,8 +25,9 @@ let ouvintesSala = [];
 
 try {
   if (
-    firebaseConfig.apiKey !== "COLOQUE_SUA_API_KEY" &&
-    firebaseConfig.projectId !== "SEU-PROJETO"
+    firebaseConfig.apiKey &&
+    firebaseConfig.apiKey !== "SUA_API_KEY_REAL" &&
+    firebaseConfig.projectId === "desvie-dos-tiros"
   ) {
     firebase.initializeApp(firebaseConfig);
     db = firebase.database();
@@ -36,9 +35,10 @@ try {
     firebase.auth().signInAnonymously()
       .then(cred => {
         jogadorOnlineId = cred.user.uid;
+        console.log("Firebase conectado!", jogadorOnlineId);
       })
-      .catch(err => {
-        console.error("Erro de autenticação Firebase:", err);
+      .catch(error => {
+        console.error("Erro de autenticação Firebase:", error);
       });
   }
 } catch (error) {
@@ -94,14 +94,20 @@ const STORAGE_KEY = "desvieDados";
 
 function carregarDados() {
   try {
-    const dados = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const dadosSalvos = JSON.parse(
+      localStorage.getItem(STORAGE_KEY)
+    );
 
-    if (dados && typeof dados === "object") {
+    if (dadosSalvos && typeof dadosSalvos === "object") {
       return {
-        coins: Number(dados.coins) || 0,
-        skins: Array.isArray(dados.skins) ? dados.skins : ["blue"],
-        skin: dados.skin || "blue",
-        ranking: Array.isArray(dados.ranking) ? dados.ranking : []
+        coins: Number(dadosSalvos.coins) || 0,
+        skins: Array.isArray(dadosSalvos.skins)
+          ? dadosSalvos.skins
+          : ["blue"],
+        skin: dadosSalvos.skin || "blue",
+        ranking: Array.isArray(dadosSalvos.ranking)
+          ? dadosSalvos.ranking
+          : []
       };
     }
   } catch (error) {
@@ -120,7 +126,10 @@ let dados = carregarDados();
 
 function salvarDados() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(dados)
+    );
   } catch (error) {
     console.warn("Não foi possível salvar os dados.");
   }
@@ -149,8 +158,10 @@ function atualizarRanking() {
     .slice(0, 10)
     .forEach((registro, index) => {
       const li = document.createElement("li");
+
       li.textContent =
         `${index + 1}. ${registro.name} — ${registro.score} pontos`;
+
       rankingEl.appendChild(li);
     });
 }
@@ -163,18 +174,49 @@ atualizarRanking();
 // ======================================================
 
 const skins = [
-  { id: "blue", name: "Azul clássico", color: "#48a8ff", price: 0 },
-  { id: "green", name: "Verde neon", color: "#44f0a5", price: 30 },
-  { id: "purple", name: "Roxo cósmico", color: "#bd70ff", price: 60 },
-  { id: "gold", name: "Ouro", color: "#ffd166", price: 100 },
-  { id: "red", name: "Vermelho", color: "#ff5470", price: 150 },
-  { id: "white", name: "Branco estelar", color: "#f4f7ff", price: 220 }
+  {
+    id: "blue",
+    name: "Azul clássico",
+    color: "#48a8ff",
+    price: 0
+  },
+  {
+    id: "green",
+    name: "Verde neon",
+    color: "#44f0a5",
+    price: 30
+  },
+  {
+    id: "purple",
+    name: "Roxo cósmico",
+    color: "#bd70ff",
+    price: 60
+  },
+  {
+    id: "gold",
+    name: "Ouro",
+    color: "#ffd166",
+    price: 100
+  },
+  {
+    id: "red",
+    name: "Vermelho",
+    color: "#ff5470",
+    price: 150
+  },
+  {
+    id: "white",
+    name: "Branco estelar",
+    color: "#f4f7ff",
+    price: 220
+  }
 ];
 
 function abrirLoja() {
   menu.classList.add("hidden");
   game.classList.add("hidden");
   shop.classList.remove("hidden");
+
   renderizarLoja();
 }
 
@@ -198,6 +240,7 @@ function renderizarLoja() {
     titulo.textContent = skin.name;
 
     const preco = document.createElement("p");
+
     preco.textContent = skin.price === 0
       ? "Grátis"
       : `Preço: ${skin.price} moedas`;
@@ -210,13 +253,14 @@ function renderizarLoja() {
       botao.disabled = true;
     } else if (desbloqueada) {
       botao.textContent = "Selecionar";
+
       botao.addEventListener("click", () => {
         dados.skin = skin.id;
         salvarDados();
         renderizarLoja();
       });
     } else {
-      botao.textContent = `Comprar (${skin.price} 🪙)`;
+      botao.textContent = `Comprar (${skin.price} moedas)`;
 
       botao.addEventListener("click", () => {
         if (dados.coins < skin.price) {
@@ -277,10 +321,15 @@ let audioContext = null;
 
 const teclas = Object.create(null);
 
-const coresTiro = ["#ff5470", "#ff9e64", "#ffdc69"];
+const coresTiro = [
+  "#ff5470",
+  "#ff9e64",
+  "#ffdc69"
+];
 
 function obterCorSkin(id) {
-  return skins.find(s => s.id === id)?.color || "#48a8ff";
+  return skins.find(skin => skin.id === id)?.color
+    || "#48a8ff";
 }
 
 function criarJogador(id, nome, x, y, cor) {
@@ -304,11 +353,17 @@ function criarJogador(id, nome, x, y, cor) {
 // 6. SOM
 // ======================================================
 
-function tocarSom(frequencia = 440, duracao = 0.08, tipo = "sine") {
+function tocarSom(
+  frequencia = 440,
+  duracao = 0.08,
+  tipo = "sine"
+) {
   if (!somLigado) return;
 
   try {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    audioContext ||= new (
+      window.AudioContext || window.webkitAudioContext
+    )();
 
     if (audioContext.state === "suspended") {
       audioContext.resume();
@@ -325,10 +380,12 @@ function tocarSom(frequencia = 440, duracao = 0.08, tipo = "sine") {
     volume.connect(audioContext.destination);
 
     oscilador.start();
+
     volume.gain.exponentialRampToValueAtTime(
       0.001,
       audioContext.currentTime + duracao
     );
+
     oscilador.stop(audioContext.currentTime + duracao);
   } catch (error) {
     // O jogo continua mesmo se o áudio não estiver disponível.
@@ -340,8 +397,6 @@ function tocarSom(frequencia = 440, duracao = 0.08, tipo = "sine") {
 // ======================================================
 
 function calcularNivel(tempo) {
-  // O nível sobe a cada 15 segundos.
-  // Não existe limite máximo.
   return Math.floor(tempo / 15) + 1;
 }
 
@@ -354,19 +409,18 @@ function atualizarDificuldade() {
     hard: 1.3
   }[dificuldadeInicial] || 1;
 
-  // Crescimento progressivo e sem limite fixo.
   velocidadeJogo = multiplicadorInicial *
-    (1 + Math.log1p(nivel - 1) * 0.48 + (nivel - 1) * 0.035);
+    (
+      1 +
+      Math.log1p(nivel - 1) * 0.48 +
+      (nivel - 1) * 0.035
+    );
 
-  // Os intervalos diminuem conforme o nível sobe.
-  // Há um limite mínimo para manter o jogo executável.
   intervaloTiro = Math.max(
     0.12,
     0.9 / (1 + (nivel - 1) * 0.085)
   );
 
-  // A cada nível, aumentamos a quantidade de projéteis.
-  // O aumento é gradual, sem um nível final.
   const quantidadeBase = 2 + Math.floor((nivel - 1) / 2);
 
   return {
@@ -391,7 +445,7 @@ function iniciarPartida() {
   limparTeclas();
 
   modoOnline = modeSelect.value === "create" ||
-               modeSelect.value === "join";
+    modeSelect.value === "join";
 
   if (modoOnline && !db) {
     onlineStatusEl.textContent =
@@ -417,8 +471,8 @@ function iniciarPartida() {
   ultimoItem = 0;
   ultimoChefe = 0;
 
-  const nome = playerNameInput.value.trim().slice(0, 16) ||
-               "Jogador";
+  const nome = playerNameInput.value.trim().slice(0, 16)
+    || "Jogador";
 
   jogadores = [
     criarJogador(
@@ -440,6 +494,7 @@ function iniciarPartida() {
   gameMessageEl.classList.add("hidden");
 
   pauseBtn.textContent = "⏸ Pausar";
+
   roomInfoEl.textContent = modoOnline
     ? "Conectando à sala online..."
     : "Modo solo — sobreviva o máximo possível!";
@@ -450,8 +505,9 @@ function iniciarPartida() {
   if (modoOnline) {
     prepararSalaOnline().catch(error => {
       console.error(error);
+
       onlineStatusEl.textContent =
-        "Não foi possível conectar à sala. Verifique a configuração do Firebase.";
+        "Não foi possível conectar à sala. Verifique o Firebase.";
     });
   }
 
@@ -471,7 +527,9 @@ function removerOuvintesSala() {
 }
 
 async function prepararSalaOnline() {
-  if (!db) throw new Error("Firebase não configurado.");
+  if (!db) {
+    throw new Error("Firebase não configurado.");
+  }
 
   if (!jogadorOnlineId) {
     const cred = await firebase.auth().signInAnonymously();
@@ -481,8 +539,10 @@ async function prepararSalaOnline() {
   const modo = modeSelect.value;
 
   if (modo === "create") {
-    salaCodigo = Math.random().toString(36)
-      .substring(2, 8).toUpperCase();
+    salaCodigo = Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase();
 
     salaRef = db.ref("salas/" + salaCodigo);
 
@@ -497,7 +557,9 @@ async function prepararSalaOnline() {
     salaCodigo = roomCodeInput.value.trim().toUpperCase();
 
     if (!/^[A-Z0-9]{6}$/.test(salaCodigo)) {
-      throw new Error("Digite um código de sala válido com 6 caracteres.");
+      throw new Error(
+        "Digite um código de sala válido com 6 caracteres."
+      );
     }
 
     salaRef = db.ref("salas/" + salaCodigo);
@@ -511,7 +573,8 @@ async function prepararSalaOnline() {
     souAnfitriao = false;
   }
 
-  const nome = playerNameInput.value.trim().slice(0, 16) || "Jogador";
+  const nome = playerNameInput.value.trim().slice(0, 16)
+    || "Jogador";
 
   const meusDados = {
     nome,
@@ -522,12 +585,19 @@ async function prepararSalaOnline() {
     atualizadoEm: firebase.database.ServerValue.TIMESTAMP
   };
 
-  await salaRef.child("jogadores/" + jogadorOnlineId).set(meusDados);
-  await salaRef.child("jogadores/" + jogadorOnlineId)
-    .onDisconnect().remove();
+  await salaRef.child(
+    "jogadores/" + jogadorOnlineId
+  ).set(meusDados);
 
-  roomInfoEl.textContent = `Sala: ${salaCodigo} — compartilhe este código!`;
-  onlineStatusEl.textContent = `Conectado à sala ${salaCodigo}.`;
+  await salaRef.child(
+    "jogadores/" + jogadorOnlineId
+  ).onDisconnect().remove();
+
+  roomInfoEl.textContent =
+    `Sala: ${salaCodigo} — compartilhe este código!`;
+
+  onlineStatusEl.textContent =
+    `Conectado à sala ${salaCodigo}.`;
 
   const jogadoresRef = salaRef.child("jogadores");
 
@@ -535,11 +605,8 @@ async function prepararSalaOnline() {
     if (!snapshot.exists()) return;
 
     const lista = snapshot.val();
-    const quantidade = Object.keys(lista).length;
+    playersCountEl.textContent = Object.keys(lista).length;
 
-    playersCountEl.textContent = quantidade;
-
-    // Os demais jogadores aparecem como avatares na arena.
     Object.entries(lista).forEach(([id, info]) => {
       if (id === jogadorOnlineId) return;
 
@@ -566,6 +633,7 @@ async function prepararSalaOnline() {
   };
 
   jogadoresRef.on("value", callback);
+
   ouvintesSala.push({
     ref: jogadoresRef,
     evento: "value",
@@ -584,7 +652,9 @@ function enviarPosicaoOnline(agora) {
   const eu = jogadores.find(j => j.id === 1 && !j.remoto);
   if (!eu) return;
 
-  salaRef.child("jogadores/" + jogadorOnlineId).update({
+  salaRef.child(
+    "jogadores/" + jogadorOnlineId
+  ).update({
     x: eu.x,
     y: eu.y,
     cor: eu.cor,
@@ -599,7 +669,9 @@ async function sairDaSala() {
 
   if (salaRef && jogadorOnlineId) {
     try {
-      await salaRef.child("jogadores/" + jogadorOnlineId).remove();
+      await salaRef.child(
+        "jogadores/" + jogadorOnlineId
+      ).remove();
     } catch (error) {
       console.warn("Não foi possível sair da sala.", error);
     }
@@ -652,15 +724,13 @@ function criarTiroDaBorda(alvo) {
   const dy = alvo.y - y;
   const distancia = Math.hypot(dx, dy) || 1;
 
-  const fator = velocidadeJogo;
-
   const velocidadeBase = 115 + Math.min(nivel * 3, 450);
 
   criarTiro(
     x,
     y,
-    (dx / distancia) * velocidadeBase * fator,
-    (dy / distancia) * velocidadeBase * fator
+    (dx / distancia) * velocidadeBase * velocidadeJogo,
+    (dy / distancia) * velocidadeBase * velocidadeJogo
   );
 }
 
@@ -672,7 +742,7 @@ function criarRajadaCircular() {
   const velocidade = (100 + nivel * 4) * velocidadeJogo;
 
   for (let i = 0; i < quantidade; i++) {
-    const angulo = (Math.PI * 2 * i) / quantidade;
+    const angulo = Math.PI * 2 * i / quantidade;
 
     criarTiro(
       chefe ? chefe.x : W / 2,
@@ -700,7 +770,7 @@ function criarChefe() {
     ultimoAtaque: 0
   };
 
-  gameMessageEl.textContent = `⚠️ CHEFÃO DO NÍVEL ${nivel}!`;
+  gameMessageEl.textContent = `CHEFÃO DO NÍVEL ${nivel}!`;
   gameMessageEl.classList.remove("hidden");
 
   tocarSom(130, 0.35, "sawtooth");
@@ -728,14 +798,13 @@ function desenharChefe() {
 
   ctx.shadowColor = "#ff5470";
   ctx.shadowBlur = 25;
-
   ctx.fillStyle = "#ff5470";
+
   ctx.beginPath();
   ctx.arc(chefe.x, chefe.y, chefe.raio, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.shadowBlur = 0;
-
   ctx.fillStyle = "#fff";
   ctx.fillRect(chefe.x - 30, chefe.y - 42, 60, 6);
 
@@ -785,7 +854,7 @@ function ativarItem(item, jogador, agora) {
   criarParticulas(item.x, item.y, "#ffd166", 12);
 }
 
-function desenharItens(agora) {
+function desenharItens() {
   itens.forEach(item => {
     const cores = {
       escudo: "#48a8ff",
@@ -870,11 +939,10 @@ function moverJogador(j, dt, agora) {
   if (teclas.ArrowDown || teclas.s) dy += 1;
 
   const comprimento = Math.hypot(dx, dy) || 1;
-
   const multiplicador = agora < j.velocidadeAte ? 1.7 : 1;
 
-  j.x += (dx / comprimento) * j.velocidade * multiplicador * dt;
-  j.y += (dy / comprimento) * j.velocidade * multiplicador * dt;
+  j.x += dx / comprimento * j.velocidade * multiplicador * dt;
+  j.y += dy / comprimento * j.velocidade * multiplicador * dt;
 
   j.x = Math.max(j.raio, Math.min(W - j.raio, j.x));
   j.y = Math.max(j.raio, Math.min(H - j.raio, j.y));
@@ -915,20 +983,6 @@ function verificarColisoes(agora) {
       }
     });
   });
-
-  if (chefe) {
-    tiros.forEach(t => {
-      if (t.fora) return;
-
-      const distancia = Math.hypot(chefe.x - t.x, chefe.y - t.y);
-
-      // O jogador não dispara projéteis nesta versão;
-      // o chefe é vencido por sobrevivência.
-      if (distancia < chefe.raio + t.raio) {
-        // Os tiros inimigos não causam dano ao próprio chefe.
-      }
-    });
-  }
 
   tiros = tiros.filter(t =>
     !t.fora &&
@@ -972,11 +1026,10 @@ function desenharJogadores(agora) {
     if (!j.vivo) return;
 
     ctx.save();
-
     ctx.shadowColor = j.cor;
     ctx.shadowBlur = 18;
-
     ctx.fillStyle = j.cor;
+
     ctx.beginPath();
     ctx.arc(j.x, j.y, j.raio, 0, Math.PI * 2);
     ctx.fill();
@@ -1024,15 +1077,15 @@ function desenharTiros() {
 }
 
 function desenharOverlay() {
-  if (pausado) {
-    ctx.fillStyle = "#050813bb";
-    ctx.fillRect(0, 0, W, H);
+  if (!pausado) return;
 
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 36px Arial";
-    ctx.fillText("PAUSADO", W / 2, H / 2);
-  }
+  ctx.fillStyle = "#050813bb";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.font = "bold 36px Arial";
+  ctx.fillText("PAUSADO", W / 2, H / 2);
 }
 
 // ======================================================
@@ -1050,7 +1103,7 @@ function loop(agora) {
   if (pausado || gameOverFlag) {
     desenharFundo();
     desenharTiros();
-    desenharItens(agora);
+    desenharItens();
     desenharChefe();
     desenharJogadores(agora);
     desenharParticulas();
@@ -1068,7 +1121,6 @@ function loop(agora) {
 
   jogadores.forEach(j => moverJogador(j, dt, agora));
 
-  // Criação de tiros: mais tiros conforme o nível avança.
   if (agora - ultimoTiro >= intervaloTiro * 1000) {
     ultimoTiro = agora;
 
@@ -1083,7 +1135,6 @@ function loop(agora) {
     }
   }
 
-  // Itens aparecem periodicamente.
   const intervaloItens = Math.max(2.5, 7 - nivel * 0.08);
 
   if (agora - ultimoItem >= intervaloItens * 1000) {
@@ -1091,7 +1142,6 @@ function loop(agora) {
     criarItem();
   }
 
-  // Chefões aparecem a cada 5 níveis.
   if (nivel % 5 === 0 && nivel !== ultimoChefe && !chefe) {
     ultimoChefe = nivel;
     criarChefe();
@@ -1100,13 +1150,12 @@ function loop(agora) {
   if (chefe) {
     atualizarChefe(dt, agora);
 
-    // Sobreviver durante 15 segundos vence o chefão.
     if (tempoJogo - (chefe.inicio || tempoJogo) > 15) {
       chefe = null;
       pontos += 100 + nivel * 10;
       moedasPartida += 10;
       criarParticulas(W / 2, 90, "#ffd166", 30);
-      gameMessageEl.textContent = "🏆 Chefão derrotado! +10 moedas";
+      gameMessageEl.textContent = "Chefão derrotado! +10 moedas";
       gameMessageEl.classList.remove("hidden");
       tocarSom(880, 0.25);
     } else if (!chefe.inicio) {
@@ -1126,7 +1175,7 @@ function loop(agora) {
   pontos = Math.floor(tempoJogo * 10) + (nivel - 1) * 25;
 
   desenharFundo();
-  desenharItens(agora);
+  desenharItens();
   desenharTiros();
   desenharChefe();
   desenharJogadores(agora);
@@ -1151,13 +1200,13 @@ function finalizarPartida() {
   gameOverFlag = true;
   rodando = false;
 
-  const moedasGanhas = Math.max(1, Math.floor(tempoJogo / 10)) +
-                       moedasPartida;
+  const moedasGanhas = Math.max(1, Math.floor(tempoJogo / 10))
+    + moedasPartida;
 
   dados.coins += moedasGanhas;
 
-  const nome = playerNameInput.value.trim().slice(0, 16) ||
-               "Jogador";
+  const nome = playerNameInput.value.trim().slice(0, 16)
+    || "Jogador";
 
   dados.ranking.push({
     name: nome,
@@ -1230,6 +1279,7 @@ async function voltarMenu() {
   menu.classList.remove("hidden");
 
   gameMessageEl.classList.add("hidden");
+
   onlineStatusEl.textContent = db
     ? "Firebase configurado."
     : "Modo solo disponível. Configure o Firebase para jogar online.";
@@ -1272,8 +1322,10 @@ window.addEventListener("keydown", event => {
 
   if (event.repeat) return;
 
-  if (event.key.toLowerCase() === "p" ||
-      event.key === "Escape") {
+  if (
+    event.key.toLowerCase() === "p" ||
+    event.key === "Escape"
+  ) {
     alternarPausa();
   }
 });
@@ -1345,7 +1397,6 @@ modeSelect.addEventListener("change", () => {
 });
 
 startBtn.addEventListener("click", iniciarPartida);
-
 shopBtn.addEventListener("click", abrirLoja);
 
 backBtn.addEventListener("click", () => {
@@ -1357,13 +1408,14 @@ pauseBtn.addEventListener("click", alternarPausa);
 
 soundBtn.addEventListener("click", () => {
   somLigado = !somLigado;
-  soundBtn.textContent = somLigado ? "🔊 Som ligado" : "🔇 Som desligado";
+  soundBtn.textContent = somLigado
+    ? "🔊 Som ligado"
+    : "🔇 Som desligado";
 
   if (somLigado) tocarSom(600);
 });
 
 fullBtn.addEventListener("click", alternarTelaCheia);
-
 menuBtn.addEventListener("click", voltarMenu);
 
 // ======================================================

@@ -3,200 +3,199 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#080b16">
-
-  <title>Desvie dos Tiros — Online</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#070b15">
+  <title>Desvie dos Tiros</title>
   <link rel="stylesheet" href="style.css">
-
-  <!-- Firebase para o multiplayer online -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
-  <script src="script.js" defer></script>
 </head>
-
 <body>
-  <main class="container">
-
-    <header class="top">
-      <div>
-        <div class="sub">ARCADE SURVIVAL • ONLINE</div>
-        <h1>DESVIE DOS <span>TIROS</span></h1>
-      </div>
-
-      <div class="coins">
-        🪙 <b id="coins">0</b>
-      </div>
+  <main class="app">
+    <header class="topbar">
+      <a class="logo" href="#" aria-label="Desvie dos Tiros">
+        <span class="logo-icon">✦</span>
+        <span>DESVIE <span class="accent">DOS TIROS</span></span>
+      </a>
+      <div class="topbar-tag">ARCADE • SOBREVIVÊNCIA</div>
     </header>
 
-    <!-- MENU PRINCIPAL -->
-    <section id="menu" class="panel">
-      <h2>Prepare-se para sobreviver!</h2>
+    <section id="menu" class="panel menu-panel">
+      <div class="hero">
+        <div class="eyebrow"><span class="pulse"></span> PRONTO PARA O DESAFIO?</div>
+        <h1>DESVIE.<br><span>SOBREVIVA.</span></h1>
+        <p>Esquiva dos projéteis, coleta poderes e tenta bater o teu recorde.</p>
+      </div>
 
-      <p>
-        Desvie dos projéteis, sobreviva aos níveis,
-        derrote os chefões e conquiste moedas.
-      </p>
+      <div class="menu-grid">
+        <div class="menu-form">
+          <label for="playerName">Nome do jogador</label>
+          <div id="nameBox">
+            <input id="playerName" type="text" maxlength="16"
+              placeholder="Digite teu nome" autocomplete="nickname">
+          </div>
 
-      <div class="row">
-        <div>
           <label for="mode">Modo de jogo</label>
-
           <select id="mode">
-            <option value="solo">Sobrevivência solo</option>
-            <option value="create">Criar sala online</option>
-            <option value="join">Entrar em sala online</option>
+            <option value="solo">Solo — sobrevivência</option>
+            <option value="create">Online — criar sala</option>
+            <option value="join">Online — entrar na sala</option>
           </select>
-        </div>
 
-        <div>
-          <label for="difficulty">Dificuldade inicial</label>
+          <div id="joinBox" class="hidden">
+            <label for="roomCode">Código da sala</label>
+            <input id="roomCode" type="text" maxlength="6"
+              placeholder="Ex.: A1B2C3" autocomplete="off">
+          </div>
 
+          <label for="difficulty">Dificuldade</label>
           <select id="difficulty">
             <option value="easy">Fácil</option>
             <option value="normal" selected>Normal</option>
             <option value="hard">Difícil</option>
           </select>
+
+          <button id="startBtn" class="btn primary full" type="button">
+            ▶ JOGAR
+          </button>
+          <button id="shopBtn" class="btn full" type="button">
+            ✦ LOJA DE SKINS
+          </button>
+
+          <p id="onlineStatus" class="status-text">
+            Modo solo disponível.
+          </p>
+        </div>
+
+        <aside class="info-card">
+          <div class="mini-arena">
+            <div class="mini-grid"></div>
+            <span class="mini-player"></span>
+            <span class="mini-bullet bullet-one"></span>
+            <span class="mini-bullet bullet-two"></span>
+            <span class="mini-bullet bullet-three"></span>
+            <span class="mini-item">+</span>
+          </div>
+
+          <h2>Como jogar</h2>
+          <div class="instruction">
+            <span class="keycap">W</span>
+            <span class="keycap">A</span>
+            <span class="keycap">S</span>
+            <span class="keycap">D</span>
+            <p>Move o personagem usando WASD ou as setas.</p>
+          </div>
+          <div class="instruction">
+            <span class="keycap">P</span>
+            <p>Pausa ou continua a partida.</p>
+          </div>
+          <div class="instruction">
+            <span class="power-icon">✦</span>
+            <p>Coleta os poderes e desvia dos projéteis.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="ranking-card">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">MELHORES PARTIDAS</span>
+            <h2>Teu ranking</h2>
+          </div>
+          <span class="ranking-icon">🏆</span>
+        </div>
+        <ol id="ranking" class="ranking-list">
+          <li>Nenhuma partida registrada ainda.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="game" class="panel game-panel hidden">
+      <div class="game-header">
+        <div>
+          <span class="eyebrow">ÁREA DE SOBREVIVÊNCIA</span>
+          <h2>Em jogo</h2>
+          <p id="roomInfo" class="status-text">
+            Modo solo — sobreviva o máximo possível!
+          </p>
+        </div>
+        <div class="game-header-actions">
+          <button id="pauseBtn" class="btn small" type="button">⏸ Pausar</button>
+          <button id="soundBtn" class="btn small" type="button">🔊 Som ligado</button>
+          <button id="fullBtn" class="btn small" type="button">⛶ Tela cheia</button>
+          <button id="menuBtn" class="btn small" type="button">Menu</button>
         </div>
       </div>
 
-      <div id="nameBox">
-        <label for="playerName">Nome do jogador</label>
-        <input
-          id="playerName"
-          type="text"
-          maxlength="16"
-          placeholder="Digite seu nome"
-          autocomplete="nickname"
-        >
+      <div class="stats">
+        <div class="stat-card">
+          <span>⏱ TEMPO</span>
+          <strong id="time">0.0</strong>
+          <small>segundos</small>
+        </div>
+        <div class="stat-card">
+          <span>✦ PONTOS</span>
+          <strong id="score">0</strong>
+          <small>pontuação</small>
+        </div>
+        <div class="stat-card">
+          <span>⚡ NÍVEL</span>
+          <strong id="level">1</strong>
+          <small>sem limite</small>
+        </div>
+        <div class="stat-card">
+          <span>🪙 MOEDAS</span>
+          <strong id="earned">0</strong>
+          <small>nesta partida</small>
+        </div>
       </div>
 
-      <div id="joinBox" class="hidden">
-        <label for="roomCode">Código da sala</label>
-        <input
-          id="roomCode"
-          type="text"
-          maxlength="6"
-          placeholder="Ex.: A8K2QZ"
-          autocapitalize="characters"
-        >
+      <div class="arena-wrap">
+        <canvas id="arena" width="900" height="520"
+          aria-label="Arena do jogo"></canvas>
+        <div id="gameMessage" class="game-message hidden"></div>
       </div>
 
-      <button id="startBtn" class="btn primary full">
-        ▶ JOGAR
-      </button>
-
-      <button id="shopBtn" class="btn full">
-        🛒 LOJA DE SKINS
-      </button>
-
-      <div id="onlineStatus" class="status">
-        Modo solo disponível. Configure o Firebase para jogar online.
+      <div class="game-footer">
+        <span>Jogadores na sala: <strong id="playersCount">1</strong></span>
+        <span>Move-te e evita os projéteis!</span>
       </div>
 
-      <div class="panel ranking-panel">
-        <h3>🏆 Ranking</h3>
-        <ol id="ranking" class="list">
-          <li>Nenhuma partida registrada ainda.</li>
-        </ol>
-
-        <p class="small">
-          Sobreviva por mais tempo para conseguir uma pontuação maior.
-        </p>
+      <div class="touch-controls" aria-label="Controles de toque">
+        <button type="button" data-key="ArrowUp" aria-label="Cima">▲</button>
+        <div>
+          <button type="button" data-key="ArrowLeft" aria-label="Esquerda">◀</button>
+          <button type="button" data-key="ArrowDown" aria-label="Baixo">▼</button>
+          <button type="button" data-key="ArrowRight" aria-label="Direita">▶</button>
+        </div>
       </div>
-
-      <p class="small">
-        Computador: WASD ou setas para se movimentar, P para pausar.
-        Celular: use os controles na tela.
-      </p>
     </section>
 
-    <!-- ÁREA DO JOGO -->
-    <section id="game" class="panel hidden">
-
-      <div class="hud">
-        <span>
-          ⏱️ Tempo:
-          <b id="time">0.0</b>s
-        </span>
-
-        <span>
-          ⭐ Pontos:
-          <b id="score">0</b>
-        </span>
-
-        <span>
-          🚀 Nível:
-          <b id="level">1</b>
-        </span>
-
-        <span>
-          🪙 Moedas:
-          <b id="earned">0</b>
-        </span>
-
-        <span>
-          👥 Jogadores:
-          <b id="playersCount">1</b>
-        </span>
+    <section id="shop" class="panel shop-panel hidden">
+      <div class="shop-header">
+        <div>
+          <span class="eyebrow">PERSONALIZAÇÃO</span>
+          <h1>Loja de skins</h1>
+          <p>Escolhe a aparência do teu personagem.</p>
+        </div>
+        <div class="coin-balance">🪙 <strong id="shopCoins">0</strong></div>
       </div>
 
-      <div id="roomInfo" class="status"></div>
+      <div id="shopItems" class="shop-items"></div>
 
-      <canvas
-        id="arena"
-        width="900"
-        height="540"
-        aria-label="Arena do jogo Desvie dos Tiros"
-      ></canvas>
-
-      <!-- CONTROLES PARA CELULAR -->
-      <div class="controls" id="touchControls">
-        <button class="btn blank" disabled>·</button>
-        <button class="btn" data-key="ArrowUp" aria-label="Cima">▲</button>
-        <button class="btn blank" disabled>·</button>
-
-        <button class="btn" data-key="ArrowLeft" aria-label="Esquerda">◀</button>
-        <button class="btn" data-key="ArrowDown" aria-label="Baixo">▼</button>
-        <button class="btn" data-key="ArrowRight" aria-label="Direita">▶</button>
-      </div>
-
-      <div class="actions">
-        <button id="pauseBtn" class="btn">⏸ Pausar</button>
-        <button id="soundBtn" class="btn">🔊 Som ligado</button>
-        <button id="fullBtn" class="btn">⛶ Tela cheia</button>
-        <button id="menuBtn" class="btn">⌂ Menu</button>
-      </div>
-
-      <div id="gameMessage" class="message hidden"></div>
-
-      <p class="small">
-        🛡️ Escudo temporário • ⚡ Velocidade • 🪙 Moedas
-        • 👾 Chefões e dificuldade crescente.
-      </p>
-    </section>
-
-    <!-- LOJA -->
-    <section id="shop" class="panel hidden">
-      <h2>🛒 Loja de skins</h2>
-
-      <p>Desbloqueie novas cores usando as moedas das partidas.</p>
-
-      <p>
-        Seu saldo:
-        🪙 <b id="shopCoins">0</b>
-      </p>
-
-      <div id="shopItems" class="shopgrid"></div>
-
-      <button id="backBtn" class="btn primary full">
-        Voltar ao menu
+      <button id="backBtn" class="btn full" type="button">
+        ← Voltar ao menu
       </button>
     </section>
 
+    <footer class="footer">
+      <span>DESVIE DOS TIROS</span>
+      <span>Desvia, coleta e sobrevive.</span>
+    </footer>
   </main>
+
+  <!-- Firebase compat: carregar antes do script.js -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
